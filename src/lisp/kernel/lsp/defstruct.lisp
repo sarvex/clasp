@@ -594,7 +594,8 @@
                (,@(mapcar #'defstruct-slotd->defclass-slotd slot-descriptions))
                ,@(let ((doc (second (assoc :documentation options))))
                    (when doc `((:documentation ,doc))))
-               (:metaclass structure-class))))
+               (:metaclass structure-class)
+               ,@(when (cdr (assoc :unboxable options)) '((:unboxable t))))))
        ,@(let ((result nil))
            (multiple-value-bind (gen-read gen-write gen-cas otype)
                (case type-base
@@ -695,7 +696,8 @@
 ;;; conc-name (normalized to a string), list of constructors with BOAs,
 ;;; list of keyword-driven constructors, copier name or NIL, ditto predicate,
 ;;; a boolean indicating whether the structure is named,
-;;; print-function name or NIL, ditto print-object, initial-offset or NIL.
+;;; print-function name or NIL, ditto print-object, initial-offset or NIL,
+;;; a boolean indicating whether the structure is unboxable.
 ;;; Any symbols that need to be interned are interned in *package*.
 (defun parse-defstruct-options (name&opts)
   (multiple-value-bind (name options)
@@ -711,7 +713,8 @@
           overriding-slot-descriptions
           constructors kw-constructors no-constructor
           predicate seen-predicate copier seen-copier (named nil)
-          print-function print-object initial-offset seen-initial-offset)
+          print-function print-object initial-offset seen-initial-offset
+          (unboxable nil))
       (do ((os options (cdr os)))
           ((endp os))
         (let ((option (car os)))
@@ -827,6 +830,13 @@
                          (named
                           (error-defstruct-option-duplicated :named))
                          (t (setq named t))))
+                  ((:unboxable)
+                   (cond ((consp option)
+                          (simple-program-error
+                           "~a was specified but is invalid syntax - it should just be ~a"
+                           option :unboxable))
+                         (unboxable (error-defstruct-option-duplicated :unboxable))
+                         (t (setq unboxable t))))
                   (otherwise
                    (error-unknown-defstruct-option opt-name)))))))
       ;; We have all the options. Do some final consistency checks,
@@ -868,6 +878,12 @@
           (simple-program-error
            "Structure definition for ~a cannot have :NAMED without :TYPE."
            name)))
+      ;; :unboxable and type consistency.
+      (when unboxable
+        (when type
+          (simple-program-error
+           "Structure definition for ~a cannot have both ~a and ~a."
+           name type unboxable)))
       ;; :print-object or :print-function and type consistency.
       (when (and print-object print-function)
         (error-defstruct-options-incompatible :print-object :print-function))
@@ -884,7 +900,7 @@
               conc-name constructors kw-constructors
               copier predicate named
               print-function print-object
-              initial-offset))))
+              initial-offset unboxable))))
 
 (defmacro defstruct (name&opts &rest slots &environment env)
   "Syntax: (defstruct
@@ -907,7 +923,7 @@ as a STRUCTURE doc and can be retrieved by (documentation 'NAME 'structure)."
   (multiple-value-bind (name type include overriding-slot-descriptions
                         conc-name constructors kw-constructors
                         copier predicate named
-                        print-function print-object initial-offset)
+                        print-function print-object initial-offset unboxable)
       (parse-defstruct-options name&opts)
     (let ((slot-descriptions slots) name-offset documentation)
       ;; Skip the documentation string.
@@ -950,5 +966,6 @@ as a STRUCTURE doc and can be retrieved by (documentation 'NAME 'structure)."
          ,@(when print-object `((:print-object ,print-object)))
          ,@(when predicate `((:predicate ,predicate ,name-offset)))
          ,@(when copier `((:copier ,copier)))
+         ,@(when unboxable `((:unboxable t)))
          ,@(when (and documentation *keep-documentation*)
              `((:documentation ,documentation)))))))

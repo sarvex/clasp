@@ -122,7 +122,10 @@
     `(,@+class-slots+
       (slot-descriptions)
       (initial-offset)
-      (constructors))))
+      (constructors)
+      ;; This slot we do need.
+      (unboxable :initform nil :initarg :unboxable
+                 :accessor structure-class-unboxable-p))))
 
 ;;; ----------------------------------------------------------------------
 ;;; STANDARD-GENERIC-FUNCTION
@@ -531,9 +534,5 @@
              (unless (= core-slot-index (length +standard-class-slots+))
                (format t "There is a mismatch between what clasp thinks should be the number of standard-class slots (~a) and what clos says it is (~a) - update metaClass.h~%" core-slot-index (length +standard-class-slots+))
                (error "There is a mismatch between what clasp thinks should be the number of standard-class slots (~a) and what clos says it is (~a) - update metaClass.h" core-slot-index (length +standard-class-slots+))))
-            ((eq name 'number-of-slots-in-structure-class)
-             (unless (= core-slot-index (length +structure-class-slots+))
-               (format t "There is a mismatch between what clasp thinks should be the number of structure-class slots (~a) and what clos says it is (~a) - update metaClass.h~%" core-slot-index (length +structure-class-slots+))
-               (error "There is a mismatch between what clasp thinks should be the number of structure-class slots (~a) and what clos says it is (~a) - update metaClass.h" core-slot-index (length +structure-class-slots+))))
             (t (format t "The class-slot-sanity-check ~a could not be verified against clos - fix the sanity check at the end of hierarchy.lisp" name-slot)
                (error "The class-slot-sanity-check ~a could not be verified against clos - fix the sanity check at the end of hierarchy.lisp" name-slot)))))))
