@@ -237,17 +237,19 @@
                 :reader effective-accessor-method-location))))
 
 ;;; ----------------------------------------------------------------------
-;;; SLOT-DEFINITION
+;;; STANDARD-SLOT-DEFINITION
 ;;;
 
 (eval-when (:compile-toplevel :execute  #+clasp :load-toplevel)
-  (core:defconstant-equal +slot-definition-slots+
+  (core:defconstant-equal +standard-slot-definition-slots+
     '((name :initarg :name :initform nil :reader slot-definition-name)
       (initform :initarg :initform :initform +initform-unsupplied+
                 :reader slot-definition-initform)
       (initfunction :initarg :initfunction :initform nil
                     :reader slot-definition-initfunction)
       (declared-type :initarg :type :initform t :reader slot-definition-type)
+      ;; The type of the slot's actual storage.
+      (layout-type :initarg layout-type :initform t :reader slot-definition-layout-type)
       (allocation :initarg :allocation :initform :instance :reader slot-definition-allocation)
       (initargs :initarg :initargs :initform nil :reader slot-definition-initargs)
       (readers :initarg :readers :initform nil :reader slot-definition-readers)
@@ -390,7 +392,7 @@
          :metaclass nil                 ; Special-cased in boot.lisp
          :direct-slots #.+standard-class-slots+)
         (standard-direct-slot-definition
-         :direct-slots #3=#.+slot-definition-slots+)
+         :direct-slots #3=#.+standard-slot-definition-slots+)
         (standard-effective-slot-definition
          :direct-slots #3#)
         (t)
@@ -404,22 +406,27 @@
         (metaobject
          :direct-superclasses (standard-object))
         (slot-definition
-         :direct-superclasses (metaobject)
-         :direct-slots #3#)
+         :direct-superclasses (metaobject))
         (standard-slot-definition
          :direct-superclasses (slot-definition)
          :direct-slots #3#)
         (direct-slot-definition
-         :direct-superclasses (slot-definition)
-         :direct-slots #3#)
+         :direct-superclasses (slot-definition))
         (effective-slot-definition
-         :direct-superclasses (slot-definition)
-         :direct-slots #3#)
+         :direct-superclasses (slot-definition))
         (standard-direct-slot-definition
          :direct-superclasses (standard-slot-definition direct-slot-definition)
          :direct-slots #3#)
         (standard-effective-slot-definition
          :direct-superclasses (standard-slot-definition effective-slot-definition)
+         :direct-slots #3#)
+        #+(or)
+        (structure-direct-slot-definition
+         :direct-superclasses (direct-slot-definition)
+         :direct-slots #3#)
+        #+(or)
+        (structure-effective-slot-definition
+         :direct-superclasses (effective-slot-definition)
          :direct-slots #3#)
         (method-combination
          :direct-superclasses (metaobject)

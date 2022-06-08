@@ -47,7 +47,7 @@
 ;;; effective-slot-from-accessor-method, but without gfs
 (defun early-effective-slot-from-accessor-method (method class)
   (with-early-accessors (+standard-accessor-method-slots+
-                         +slot-definition-slots+
+                         +standard-slot-definition-slots+
                          +class-slots+)
     (let* ((direct-slot-definition (accessor-method-slot-definition method))
            (direct-slot-name (slot-definition-name direct-slot-definition))
@@ -68,7 +68,7 @@
 ;;; FIXME: Duplication of other code, in this case compute-outcome, sucks.
 (defun early-compute-outcome (methods specializers)
   (with-early-accessors (+standard-method-slots+
-                         +slot-definition-slots+)
+                         +standard-slot-definition-slots+)
     (mapc (lambda (method)
             (when (method-qualifiers method)
               ;; Hopefully the write won't trigger a recursive error...?
@@ -499,7 +499,7 @@ a list (EQL object) - just like DEFMETHOD."
        ,@(satiate-readers (set-difference +standard-accessor-method-slots+ +standard-method-slots+)
                           '((standard-reader-method) (standard-writer-method)
                             (effective-reader-method) (effective-writer-method)))
-       ,@(satiate-readers +slot-definition-slots+
+       ,@(satiate-readers +standard-slot-definition-slots+
                           '((standard-direct-slot-definition) (standard-effective-slot-definition)))
        ,@(satiate-readers +standard-generic-function-slots+
                           '((standard-generic-function)))

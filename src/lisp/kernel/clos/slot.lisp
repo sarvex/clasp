@@ -25,7 +25,7 @@
   (when (and (eq allocation :class)
 	     (functionp initfunction))
     (setf initfunction (constantly (funcall initfunction))))
-  (with-early-make-instance +slot-definition-slots+
+  (with-early-make-instance +standard-slot-definition-slots+
     (slotd class
 	   :name name
 	   :initform initform

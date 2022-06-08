@@ -59,7 +59,7 @@
 
 (defun early-intern-effective-reader (method location)
   (with-early-accessors (+standard-accessor-method-slots+
-                         +slot-definition-slots+)
+                         +standard-slot-definition-slots+)
     (let* ((direct-slotd (accessor-method-slot-definition method))
            (key (cons direct-slotd location)))
       (or (gethash key *cached-effective-readers*)
@@ -82,7 +82,7 @@
 
 (defun early-intern-effective-writer (method location)
   (with-early-accessors (+standard-accessor-method-slots+
-                         +slot-definition-slots+)
+                         +standard-slot-definition-slots+)
     (let* ((direct-slotd (accessor-method-slot-definition method))
            (key (cons direct-slotd location)))
       (or (gethash key *cached-effective-writers*)

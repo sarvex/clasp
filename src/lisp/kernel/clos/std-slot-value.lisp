@@ -210,7 +210,7 @@ consequences are not defined."
 
 (defun slot-value (self slot-name)
   (with-early-accessors (+standard-class-slots+
-			 +slot-definition-slots+)
+			 +standard-slot-definition-slots+)
     (let* ((class (class-of self))
 	   (location-table (class-location-table class)))
       (if location-table
@@ -245,7 +245,7 @@ consequences are not defined."
 
 (defun slot-boundp (self slot-name)
   (with-early-accessors (+standard-class-slots+
-			 +slot-definition-slots+)
+			 +standard-slot-definition-slots+)
     (let* ((class (class-of self))
 	   (location-table (class-location-table class)))
       (if location-table
@@ -267,7 +267,7 @@ consequences are not defined."
 
 (defun slot-makunbound (self slot-name)
   (with-early-accessors (+standard-class-slots+
-                         +slot-definition-slots+)
+                         +standard-slot-definition-slots+)
     (let* ((class (class-of self))
 	   (location-table (class-location-table class)))
       (if location-table
@@ -294,7 +294,7 @@ consequences are not defined."
 ;;;     -> returning value after the calls to slot-missing
 (defun (setf slot-value) (value self slot-name)
   (with-early-accessors (+standard-class-slots+
-			 +slot-definition-slots+)
+			 +standard-slot-definition-slots+)
     (let* ((class (class-of self))
 	   (location-table (class-location-table class)))
       (if location-table

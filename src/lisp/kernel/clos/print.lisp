@@ -162,7 +162,7 @@ printer and we should rather use MAKE-LOAD-FORM."
                (error "Probably a BUG: slot ~a in ~a stopped existing between compile and load"
                       ',slot-name ,class))))
     (if earlyp
-        `(with-early-accessors (+standard-class-slots+ +slot-definition-slots+)
+        `(with-early-accessors (+standard-class-slots+ +standard-slot-definition-slots+)
            (flet ((slot-definition-name (sd) (slot-definition-name sd))) ; macro, so.
              ,form))
         form)))

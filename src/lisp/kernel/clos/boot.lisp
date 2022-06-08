@@ -109,7 +109,7 @@
   ;; It does not matter that we pass NIL instead of a class object,
   ;; because CANONICAL-SLOT-TO-DIRECT-SLOT will make simple slots.
   (with-early-accessors (+standard-class-slots+
-			 +slot-definition-slots+)
+			 +standard-slot-definition-slots+)
     (let* ((location-table (make-hash-table :size (if slots 24 0)))
            (direct-slot-class (find-class 'standard-direct-slot-definition nil))
 	   (direct-slots (loop for slotd in slots

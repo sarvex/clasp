@@ -190,11 +190,11 @@
 ;;; CLASSES INITIALIZATION AND REINITIALIZATION
 ;;;
 
-(defmethod direct-slot-definition-class ((class T) &rest canonicalized-slot)
+(defmethod direct-slot-definition-class ((class class) &rest canonicalized-slot)
   (declare (ignore class canonicalized-slot))
   (find-class 'standard-direct-slot-definition nil))
 
-(defmethod effective-slot-definition-class ((class T) &rest canonicalized-slot)
+(defmethod effective-slot-definition-class ((class class) &rest canonicalized-slot)
   (declare (ignore class canonicalized-slot))
   (find-class 'standard-effective-slot-definition nil))
 
