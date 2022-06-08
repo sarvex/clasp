@@ -427,6 +427,11 @@ and is not adjustable."
     (error "~S is not a valid part type for a complex." real-type))
   'REAL)
 
+(defun ext:upgraded-slot-type (typespec &optional env)
+  (declare (ignore env) (ignore typespec))
+  ;; At the moment we do not have specialized structures.
+  't)
+
 (defun in-interval-p (x interval)
   (let* (low high)
     (if (endp interval)

@@ -218,4 +218,5 @@
             tpl-frame tpl-argument tpl-arguments
             ;; Misc
             with-current-source-form
+            upgraded-slot-type
             )))
