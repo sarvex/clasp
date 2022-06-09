@@ -33,62 +33,12 @@
   (error "Cannot define structure ~a - it INCLUDEs ~a, which is undefined."
          name include))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;
-;;; Environment access
-;;;
+(defun error-incompatible-include (name type include includetype)
+  (error "Cannot define structure ~a with type ~a - it INCLUDEs ~a, which has incompatible type ~a"
+         name type include includetype))
 
-;;; FIXME: these should take environments
-(defun structure-type (name)
-  (get-sysprop name 'structure-type))
-(defun (setf structure-type) (type name)
-  (put-sysprop name 'structure-type type))
-(defun structure-slot-descriptions (name)
-  (get-sysprop name 'structure-slot-descriptions))
-(defun (setf structure-slot-descriptions) (descriptions name)
-  (put-sysprop name 'structure-slot-descriptions descriptions))
-(defun structure-constructor (name)
-  (get-sysprop name 'structure-constructor))
-(defun (setf structure-constructor) (constructor name)
-  (put-sysprop name 'structure-constructor constructor))
-(defun names-structure-p (name)
-  (structure-type name))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;
-;;; Miscellaneous
-
-;;; Used by #S reader
-(defun make-structure (name initargs)
-  (unless (names-structure-p name) (error "~s is not a structure class." name))
-  (let ((constructor (structure-constructor name)))
-    (if constructor
-        (apply constructor initargs)
-        (error "The structure class ~s has no standard constructor." name))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;
-;;; Delaying definitions
-;;;
-;;; A DEFSTRUCT can :include other structures not defined at compile time
-;;; (e.g., from nontoplevel definitions). This is rare and a huge pain and silly
-;;; to do since it inhibits the efficiency points of defstruct, but allowed.
-
-(defmacro with-defstruct-delay ((slotds name include slots overwrites env) &body body)
-  (declare (ignore env)) ;; see FIXME in environment access
-  `(let ((,slotds
-           (cond ((null ,include) ; no include
-                  ,slots)
-                 ((names-structure-p ,include) ; normal include case
-                  (append (overwrite-slot-descriptions
-                           ,overwrites
-                           (structure-slot-descriptions ,include))
-                          ,slots))
-                 (t ; include not defined yet
-                  ;; FIXME: It's nonconforming to err here -
-                  ;; the included class could be defined later.
-                  (error-missing-include ,name ,include)))))
-     ,@body))
+(defun warn-incompatible-struct-redefinition (name)
+  (warn "Redefining structure ~s incompatibly" name))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -273,6 +223,127 @@
 
 (defun immutable-slot-descriptions (slot-descriptions)
   (mapcar #'immutable-slot-description slot-descriptions))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Layouts
+;;; A layout describes the structure of a structure object.
+;;; It includes the basic kind of storage (object, vector, or list) as well as
+;;; some information about the slots: their upgraded types.
+;;; It does not include, e.g., initforms.
+;;; It also doesn't include names. Besides the fact that these are unrelated to
+;;; storage, doing so is a problem with :NAMED slots, which are uninterned symbols
+;;; that may not be identical between compile and load time.
+;;; Basically it's just enough information to lay objects out in memory.
+;;; Because this is really early, we represent layouts as lists. FIXME?
+
+(defun layout-type-base (layout) (first layout))
+(defun layout-slot-layouts (layout) (rest layout))
+
+(defun make-layout (type-base slot-layouts) (list* type-base slot-layouts))
+
+;;; The type is the layout type, i.e. how it actually is in memory, which may be
+;;; upgraded from the declared type. (The declared type is otherwise irrelevant here.)
+(defun slot-layout-type (slot-layout) (first slot-layout))
+
+(defun make-slot-layout (type) (list type))
+
+(defun layoutify-slot-description (slot-description)
+  ;; Because this is a structure-object struct, there should be no NIL slotds.
+  (destructuring-bind (name &key (type t) &allow-other-keys) slot-description
+    (declare (ignore name))
+    ;; e:u-s-t ignores the environment, so this should be okay, if cheap.
+    (make-slot-layout (ext:upgraded-slot-type type))))
+
+(defun layoutify-slot-descriptions (slot-descriptions)
+  (mapcar #'layoutify-slot-description slot-descriptions))
+
+(defun slotds->layout (type-base element-type slot-descriptions)
+  (case type-base
+    (structure-object (make-layout 'structure-object
+                                    (layoutify-slot-descriptions slot-descriptions)))
+    ;; non structure objects are uniform, so the slots all have the element type.
+    (list (make-layout 'list (mapcar (lambda (slot-description)
+                                       (declare (ignore slot-description))
+                                       (make-slot-layout 't))
+                                     slot-descriptions)))
+    (vector (make-layout `(vector ,element-type)
+                         (mapcar (lambda (slot-description)
+                                   (declare (ignore slot-description))
+                                   (make-slot-layout element-type))
+                                 slot-descriptions)))))
+
+;;; We have this layout merger function rather than just computing a layout from the
+;;; effective slotds. That's because the layout information is basically independent of
+;;; subtype overrides; in particular, a stricter :type override in a subclass must not
+;;; alter the layout type of an inherited slot.
+(defun include-layout (name layout super superlayout)
+  (unless (equal (layout-type-base layout) (layout-type-base superlayout))
+    (error-incompatible-include name (layout-type-base layout)
+                                super (layout-type-base superlayout)))
+  ;; Actually make the layout
+  (make-layout (layout-type-base layout)
+               (append (layout-slot-layouts superlayout)
+                       (layout-slot-layouts layout))))
+
+(defun slot-layouts-compatible-p (slot-layout1 slot-layout2)
+  (and (equal (slot-layout-type slot-layout1) (slot-layout-type slot-layout2))))
+
+(defun layouts-compatible-p (layout1 layout2)
+  (and (equal (layout-type-base layout1) (layout-type-base layout2))
+       (let ((slots1 (layout-slot-layouts layout1)) (slots2 (layout-slot-layouts layout2)))
+         (and (= (length slots1) (length slots2))
+              (every #'slot-layouts-compatible-p slots1 slots2)))))
+
+;;; Make a layout known to Clasp.
+;;; If a layout by the given name already exists, warn on redefinition.
+(defmacro define-layout (name new-layout)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (let ((new-layout ',new-layout))
+       ;; Check for redefinition.
+       (multiple-value-bind (old-layout existsp) (structure-layout ',name)
+         (when (and existsp (not (layouts-compatible-p old-layout new-layout)))
+           (warn-incompatible-struct-redefinition ',name)
+           ,@(when (eq (layout-type-base new-layout) 'structure-object)
+               `((setf (find-class ',name) nil))))
+         ;; actually define.
+         (setf (structure-layout ',name) new-layout)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Environment access
+;;; NOTE: Several of these are called from DESCRIBE.
+;;;
+
+;;; FIXME: these should take environments
+(defun structure-layout (name)
+  (get-sysprop name 'structure-layout))
+(defun (setf structure-layout) (layout name)
+  (put-sysprop name 'structure-layout layout))
+(defun structure-type (name)
+  (layout-type-base (structure-layout name)))
+(defun structure-slot-descriptions (name)
+  (get-sysprop name 'structure-slot-descriptions))
+(defun (setf structure-slot-descriptions) (descriptions name)
+  (put-sysprop name 'structure-slot-descriptions descriptions))
+(defun structure-constructor (name)
+  (get-sysprop name 'structure-constructor))
+(defun (setf structure-constructor) (constructor name)
+  (put-sysprop name 'structure-constructor constructor))
+(defun names-structure-p (name)
+  (structure-type name))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Miscellaneous
+
+;;; Used by #S reader
+(defun make-structure (name initargs)
+  (unless (names-structure-p name) (error "~s is not a structure class." name))
+  (let ((constructor (structure-constructor name)))
+    (if constructor
+        (apply constructor initargs)
+        (error "The structure class ~s has no standard constructor." name))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -467,109 +538,100 @@
                                           ,keys))
       nil))
 
-(defmacro %%defstruct (name type (include included-size)
+(defmacro %%defstruct (name type-base element-type (include included-size)
                        (&rest slot-descriptions)
+                       layout
                        &key constructors kw-constructors print-function print-object
                          ((:predicate (predicate name-index)) '(nil nil) predicatep)
                          copier unboxable (documentation nil documentationp))
-  (multiple-value-bind (type-base decltype)
-      ;; NOTE about :type. CLHS says the structure :TYPE "must be one of"
-      ;; LIST, VECTOR, or (VECTOR element-type). Nothing about subtypes
-      ;; or expanding deftypes or whatever. We used to use SUBTYPEP here
-      ;; but this is simpler and apparently in line with the standard.
-      (cond ((null type) (values 'structure-object name))
-            ((eq type 'list) (values type type))
-            ((eq type 'vector) (values 'vector '(simple-array t (*))))
-            ((and (consp type) (eq (car type) 'vector)
-                  (consp (cdr type)) (null (cddr type)))
-             (values 'vector `(simple-array ,(second type) (*))))
-            (t (simple-program-error
-                "~a is not a valid :TYPE in structure definition for ~a"
-                type name)))
-    (let ((gen-read (read-form-generator type-base))
-          (gen-write (write-form-generator type-base))
-          (gen-cas (cas-form-generator type-base))
-          (alloc (case type-base
-                   (structure-object
-                    `(allocate-instance
-                      ;; The class is not immediately available at l-t-v time-
-                      ;; because the defclass form must be evaluated first.
-                      ;; Thus, bullshit.
-                      (let ((class (load-time-value (list nil))))
-                        (or (car class)
-                            (car (rplaca class (find-class ',name)))))))
-                   (list `(make-list ,(length slot-descriptions)))
-                   (vector `(make-array ,(length slot-descriptions)
-                                        :element-type ',(second decltype))))))
-      (when unboxable
-        ;; Unboxable structs are immutable.
-        (setf slot-descriptions (immutable-slot-descriptions slot-descriptions)))
-      `(progn
-         (eval-when (:compile-toplevel :load-toplevel :execute)
-           (setf (structure-type ',name) ',type-base
-                 (structure-slot-descriptions ',name) ',slot-descriptions))
-         ,@(when (eq type-base 'structure-object)
-             `((defclass ,name ,(if include (list include) nil)
-                 (,@(mapcar #'defstruct-slotd->defclass-slotd slot-descriptions))
-                 ,@(when documentationp `((:documentation ,documentation)))
-                 (:metaclass structure-class)
-                 ,@(when unboxable '((:unboxable t))))))
-         ,@(do ((slotds slot-descriptions (rest slotds))
-                (location 0 (1+ location))
-                (result nil))
-               ((endp slotds) result)
-             (when (first slotds) ; skip filler pseudoslots
-               (setq result (nconc (gen-defstruct-accessor
-                                    decltype (first slotds) location
-                                    gen-read gen-write gen-cas)
-                                   result))))
-         ,@(do ((constructors constructors (rest constructors))
-                (result nil))
-               ((endp constructors) result)
-             (destructuring-bind (name lambda-list) (first constructors)
-               (push (defstruct-constructor-def name lambda-list slot-descriptions alloc gen-write)
-                     result)))
-         ,@(do ((kwcons kw-constructors (rest kwcons))
-                (result nil))
-               ((endp kwcons) result)
-             (push (defstruct-kw-constructor-def (first kwcons) slot-descriptions alloc gen-write)
-                   result))
-         ,@(when print-function
-             (let ((obj (gensym "OBJ")) (stream (gensym "STREAM")))
-               `((defmethod print-object ((,obj ,name) ,stream)
-                   (,print-function ,obj ,stream 0)))))
-         ,@(when print-object
-             (let ((obj (gensym "OBJ")) (stream (gensym "STREAM")))
-               `((defmethod print-object ((,obj ,name) ,stream)
-                   (,print-object ,obj ,stream)))))
-         ,@(when predicatep
-             (list
-              (case type-base
-                (structure-object
-                 `(defgeneric ,predicate (object)
-                    (:method (object) (declare (ignore object)) nil)
-                    (:method ((object ,name)) t)))
-                (list
-                 `(defun ,predicate (object)
-                    (and (list-of-length-at-least object ,(length slot-descriptions))
-                         (eq (nth ,(+ name-index included-size) object) ',name))))
-                (vector
-                 `(defun ,predicate (object)
-                    (and (typep object ',decltype)
-                         (>= (length object) ,(length slot-descriptions))
-                         (eq (row-major-aref object ,(+ name-index included-size)) ',name)))))))
-         ,@(when copier
-             `((defun ,copier (instance)
-                 (,(case type-base
-                     (structure-object 'copy-structure)
-                     (list 'copy-list)
-                     (vector 'copy-seq))
-                  instance))))
-         ,@(when documentationp
-             `((set-documentation ',name 'structure ',documentation)))
-         ,@(when kw-constructors
-             `((setf (structure-constructor ',name) ',(first kw-constructors))))
-         ',name))))
+  (let ((decltype (case type-base
+                    (structure-object name)
+                    (list 'list)
+                    (vector `(simple-array ,element-type (*)))))
+        (gen-read (read-form-generator type-base))
+        (gen-write (write-form-generator type-base))
+        (gen-cas (cas-form-generator type-base))
+        (alloc (case type-base
+                 (structure-object
+                  `(allocate-instance
+                    ;; The class is not immediately available at l-t-v time-
+                    ;; because the defclass form must be evaluated first.
+                    ;; Thus, bullshit.
+                    (let ((class (load-time-value (list nil))))
+                      (or (car class)
+                          (car (rplaca class (find-class ',name)))))))
+                 (list `(make-list ,(length slot-descriptions)))
+                 (vector `(make-array ,(length slot-descriptions)
+                                      :element-type ',element-type)))))
+    (when unboxable
+      ;; Unboxable structs are immutable.
+      (setf slot-descriptions (immutable-slot-descriptions slot-descriptions)))
+    `(progn
+       (define-layout ,name ,layout)
+       (eval-when (:compile-toplevel :load-toplevel :execute)
+         (setf (structure-slot-descriptions ',name) ',slot-descriptions))
+       ,@(when (eq type-base 'structure-object)
+           `((defclass ,name ,(if include (list include) nil)
+               (,@(mapcar #'defstruct-slotd->defclass-slotd slot-descriptions))
+               ,@(when documentationp `((:documentation ,documentation)))
+               (:metaclass structure-class)
+               ,@(when unboxable '((:unboxable t))))))
+       ,@(do ((slotds slot-descriptions (rest slotds))
+              (location 0 (1+ location))
+              (result nil))
+             ((endp slotds) result)
+           (when (first slotds) ; skip filler pseudoslots
+             (setq result (nconc (gen-defstruct-accessor
+                                  decltype (first slotds) location
+                                  gen-read gen-write gen-cas)
+                                 result))))
+       ,@(do ((constructors constructors (rest constructors))
+              (result nil))
+             ((endp constructors) result)
+           (destructuring-bind (name lambda-list) (first constructors)
+             (push (defstruct-constructor-def name lambda-list slot-descriptions alloc gen-write)
+                   result)))
+       ,@(do ((kwcons kw-constructors (rest kwcons))
+              (result nil))
+             ((endp kwcons) result)
+           (push (defstruct-kw-constructor-def (first kwcons) slot-descriptions alloc gen-write)
+                 result))
+       ,@(when print-function
+           (let ((obj (gensym "OBJ")) (stream (gensym "STREAM")))
+             `((defmethod print-object ((,obj ,name) ,stream)
+                 (,print-function ,obj ,stream 0)))))
+       ,@(when print-object
+           (let ((obj (gensym "OBJ")) (stream (gensym "STREAM")))
+             `((defmethod print-object ((,obj ,name) ,stream)
+                 (,print-object ,obj ,stream)))))
+       ,@(when predicatep
+           (list
+            (case type-base
+              (structure-object
+               `(defgeneric ,predicate (object)
+                  (:method (object) (declare (ignore object)) nil)
+                  (:method ((object ,name)) t)))
+              (list
+               `(defun ,predicate (object)
+                  (and (list-of-length-at-least object ,(length slot-descriptions))
+                       (eq (nth ,(+ name-index included-size) object) ',name))))
+              (vector
+               `(defun ,predicate (object)
+                  (and (typep object ',decltype)
+                       (>= (length object) ,(length slot-descriptions))
+                       (eq (row-major-aref object ,(+ name-index included-size)) ',name)))))))
+       ,@(when copier
+           `((defun ,copier (instance)
+               (,(case type-base
+                   (structure-object 'copy-structure)
+                   (list 'copy-list)
+                   (vector 'copy-seq))
+                instance))))
+       ,@(when documentationp
+           `((set-documentation ',name 'structure ',documentation)))
+       ,@(when kw-constructors
+           `((setf (structure-constructor ',name) ',(first kw-constructors))))
+       ',name)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -584,23 +646,45 @@
                       (&rest overriding-slot-descriptions)
                       (&rest slot-descriptions)
                       &rest options)
-  (cond ((null include)
-         `(%%defstruct ,name ,type (,include 0)
-                       (,@slot-descriptions)
-                       ,@options))
-        ((names-structure-p include) ; normal include case
-         (let* ((old (structure-slot-descriptions include))
-                (slotds (final-slot-descriptions
-                         conc-name slot-descriptions
-                         overriding-slot-descriptions
-                         old)))
-           `(%%defstruct ,name ,type (,include ,(length old))
-                         (,@slotds)
-                         ,@options)))
-        (t ; include not defined yet
-         ;; FIXME: It's nonconforming to err here -
-         ;; the included class could be defined later.
-         (error-missing-include name include))))
+  (multiple-value-bind (type-base element-type)
+      ;; NOTE about :type. CLHS says the structure :TYPE "must be one of"
+      ;; LIST, VECTOR, or (VECTOR element-type). Nothing about subtypes
+      ;; or expanding deftypes or whatever. We used to use SUBTYPEP here
+      ;; but this is simpler and apparently in line with the standard.
+      ;; the element-type value here only matters for vectors.
+      (cond ((null type) (values 'structure-object 't))
+            ((eq type 'list) (values type 't))
+            ((eq type 'vector) (values 'vector 't))
+            ((and (consp type) (eq (car type) 'vector)
+                  (consp (cdr type)) (null (cddr type)))
+             (values 'vector (second type)))
+            (t (simple-program-error
+                "~a is not a valid :TYPE in structure definition for ~a"
+                type name)))
+    ;; Note that we make the layouts at compile time, meaning we don't need to
+    ;; worry about e.g. dumping initforms.
+    (cond ((null include)
+           `(%%defstruct ,name ,type-base ,element-type (,include 0)
+                         (,@slot-descriptions)
+                         ,(slotds->layout type-base element-type slot-descriptions)
+                         ,@options))
+          ((names-structure-p include) ; normal include case
+           (let* ((old-layout (structure-layout include))
+                  (sub-layout (slotds->layout type-base element-type slot-descriptions))
+                  (layout (include-layout name sub-layout include old-layout))
+                  (old-slotds (structure-slot-descriptions include))
+                  (slotds (final-slot-descriptions
+                           conc-name slot-descriptions
+                           overriding-slot-descriptions
+                           old-slotds)))
+             `(%%defstruct ,name ,type-base ,element-type (,include ,(length old-slotds))
+                           (,@slotds)
+                           ,layout
+                           ,@options)))
+          (t ; include not defined yet
+           ;; FIXME: It's nonconforming to err here -
+           ;; the included class could be defined later.
+           (error-missing-include name include)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
