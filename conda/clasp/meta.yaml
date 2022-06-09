@@ -3,7 +3,7 @@ package:
   version: "1.0.0"
 
 source:
-  git_rev:
+  git_rev: yitzchak_conda
   git_url: https://github.com/clasp-developers/clasp.git
   git_depth: 0
 
