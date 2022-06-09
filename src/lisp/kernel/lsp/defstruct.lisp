@@ -266,6 +266,14 @@
     ;; Done.
     (append old-slotds new-slotds)))
 
+;;; Return new read-only equivalents to the given slot description,
+;;; for immutable structs.
+(defun immutable-slot-description (slot-description)
+  (substitute :reader :accessor slot-description))
+
+(defun immutable-slot-descriptions (slot-descriptions)
+  (mapcar #'immutable-slot-description slot-descriptions))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; %%DEFSTRUCT is like DEFSTRUCT, but with easier to work with syntax.
@@ -585,6 +593,9 @@
             (t (simple-program-error
                 "~a is not a valid :TYPE in structure definition for ~a"
                 type name)))
+    (when (cdr (assoc :unboxable options))
+      ;; Unboxable structs are immutable.
+      (setf slot-descriptions (immutable-slot-descriptions slot-descriptions)))
     `(progn
        (eval-when (:compile-toplevel :load-toplevel :execute)
          (setf (structure-type ',name) ',type-base
