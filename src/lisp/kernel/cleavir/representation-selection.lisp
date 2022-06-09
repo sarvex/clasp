@@ -17,6 +17,7 @@
 ;;; * :double-float, meaning an unboxed double float
 ;;; * :fixnum, meaning a tagged fixnum
 ;;; * :vaslist, meaning an unboxed vaslist
+;;; * A cc-bmir:struct-rtype object, meaning an unboxed struct.
 ;;; So e.g. (:object :object) means a pair of T_O*.
 
 ;;; vaslists have both a "multiple value" rtype and a "single value" rtype

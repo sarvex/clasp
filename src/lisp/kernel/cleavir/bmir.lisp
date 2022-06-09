@@ -70,6 +70,12 @@
 
 ;;;
 
+(defclass struct-rtype ()
+  ((%slot-rtypes :initarg :slot-rtypes :reader struct-rtype-slot-rtypes)
+   (%packedp :initarg :packedp :initform nil :reader struct-rtype-packedp)))
+
+;;;
+
 (cleavir-stealth-mixins:define-stealth-mixin datum () bir:datum
   ((%rtype :initarg :rtype :initform :unassigned :accessor rtype)))
 

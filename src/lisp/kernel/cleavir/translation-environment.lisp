@@ -58,6 +58,12 @@
 (defmethod vrtype->llvm ((vrtype (eql :fixnum))) cmp:%fixnum%)
 (defmethod vrtype->llvm ((vrtype (eql :vaslist))) cmp:%vaslist%)
 
+(defun compute-struct-llvm-type (slot-rtypes packedp)
+  (cmp:struct-type-get (mapcar #'vrtype->llvm slot-rtypes) packedp))
+(defmethod vrtype->llvm ((vrtype cc-bmir:struct-rtype))
+  (compute-struct-llvm-type (cc-bmir:struct-rtype-slot-rtypes vrtype)
+                            (cc-bmir:struct-rtype-packedp vrtype)))
+
 (defun bind-variable (var)
   (if (bir:immutablep var)
       ;; Since immutable vars are just LLVM Values, they will be initialized

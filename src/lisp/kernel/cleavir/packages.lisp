@@ -113,6 +113,7 @@
            #:mtf #:append-values #:fixed-mv-call #:fixed-mv-local-call)
   (:export #:datum)
   (:export #:rtype)
+  (:export #:struct-rtype #:struct-rtype-slot-rtypes #:struct-rtype-packedp)
   (:export #:cast-one))
 
 (defpackage #:clasp-cleavir-vaslist
