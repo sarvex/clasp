@@ -40,9 +40,5 @@ requirements:
     - czmq
     - boost-cpp
 
-test:
-  imports:
-    -
-
 about:
   home: https://github.com/clasp-developers/clasp
