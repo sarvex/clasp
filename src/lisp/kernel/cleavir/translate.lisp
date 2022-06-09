@@ -65,8 +65,7 @@
         ((not (listp rtype)) (error "Bad rtype ~a" rtype))
         ((null rtype) cmp:%void%)
         ((null (rest rtype)) (vrtype->llvm (first rtype)))
-        (t (llvm-sys:struct-type-get
-            (cmp:thread-local-llvm-context)
+        (t (cmp:struct-type-get
             (mapcar #'vrtype->llvm rtype)
             nil))))
 

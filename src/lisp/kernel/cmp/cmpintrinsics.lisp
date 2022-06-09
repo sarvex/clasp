@@ -64,6 +64,8 @@ Set this to other IRBuilders to make code go where you want")
   (llvm-print msg)
   (irc-intrinsic "debugPrint_size_t" (irc-bit-cast st %i64%)))
 
+(defun struct-type-get (elements packedp)
+  (llvm-sys:struct-type-get (thread-local-llvm-context) elements packedp))
 
 (defstruct (c++-struct :named (:type vector))
   name ; The symbol-macro name of the type

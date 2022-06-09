@@ -40,6 +40,7 @@
             +c++-stamp-max+
             %opaque-fn-prototype*%
             fn-prototype
+            struct-type-get
             *cleavir-compile-file-hook*
             *cleavir-compile-hook*
             *compile-print*
