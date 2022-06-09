@@ -289,48 +289,8 @@
     `(,slot-name ,@(when initformp `(:initform ,initform))
                  :initarg ,initarg :type ,type)))
 
-(defun defstruct-class-reader-body (structure-name element-type location)
-  (declare (ignore element-type))
-  `(if (typep object ',structure-name)
-       (si:instance-ref object ,location)
-       (error 'type-error
-              :datum object
-              :expected-type ',structure-name)))
-
-(defun defstruct-class-writer-body (structure-name element-type location)
-  (declare (ignore element-type))
-  `(if (typep object ',structure-name)
-       (progn (si:instance-set object ,location new)
-              new)
-       (error 'type-error
-              :datum object
-              :expected-type ',structure-name)))
-
-(defun defstruct-class-cas-body (structure-name element-type location)
-  (declare (ignore structure-name element-type))
-  `(apply #'mp:get-atomic-expansion
-          (list 'clos::standard-instance-access object ,location)
-          keys))
-
-(defun defstruct-vector-reader-body (structure-name element-type location)
-  (declare (ignore element-type) ; maybe later.
-           (ignore structure-name))
-  `(row-major-aref object ,location))
-
-(defun defstruct-vector-writer-body (structure-name element-type location)
-  (declare (ignore element-type structure-name))
-  `(setf (row-major-aref object ,location) new))
-
-(defun defstruct-list-reader-body (structure-name element-type location)
-  (declare (ignore structure-name element-type))
-  `(nth ,location object))
-
-(defun defstruct-list-writer-body (structure-name element-type location)
-  (declare (ignore structure-name element-type))
-  `(setf (nth ,location object) new))
-
-(defun gen-defstruct-accessor (structure-name element-type slotd location
-                               gen-read gen-write gen-cas otype)
+(defun gen-defstruct-accessor (struct-type slotd location
+                               gen-read gen-write gen-cas)
   (destructuring-bind (slot-name &key (type t) reader accessor
                        &allow-other-keys)
       slotd
@@ -339,19 +299,23 @@
         (if accessor (values accessor nil) (values reader t))
       (unless (not accessor) ; no reader OR accessor
         (list*
-         `(declaim (ftype (function (,otype) ,type) ,accessor)
+         `(declaim (ftype (function (,struct-type) ,type) ,accessor)
                    (inline ,accessor))
          `(defun ,accessor (object)
-            ,(funcall gen-read structure-name element-type location))
+            (declare (type ,struct-type object))
+            ,(funcall gen-read 'object location))
          (unless read-only
            (list*
-            `(declaim (ftype (function (,type ,otype) ,type) (setf ,accessor))
+            `(declaim (ftype (function (,type ,struct-type) ,type) (setf ,accessor))
                       (inline (setf ,accessor)))
             `(defun (setf ,accessor) (new object)
-               ,(funcall gen-write structure-name element-type location))
+               (declare (type ,struct-type object) (type ,type new))
+               ,(funcall gen-write 'object location 'new)
+               ;; necessary because instance-set doesn't return the value
+               new)
             (when gen-cas
               `((mp:define-atomic-expander ,accessor (object) (&rest keys)
-                  ,(funcall gen-cas structure-name element-type location)))))))))))
+                  ,(funcall gen-cas 'object location 'keys)))))))))))
 
 (defun process-boa-lambda-list (original-lambda-list slot-descriptions)
   (let ((lambda-list (copy-list original-lambda-list))
@@ -434,7 +398,7 @@
           ((null slot-descriptions))
         (let ((slotd (first slot-descriptions)))
           (when (member slotd initialized-slots)
-            (push (funcall genset osym (first slotd) index) forms))))
+            (push (funcall genset osym index (first slotd)) forms))))
       ;; Done
       `(defun ,name ,lambda-list
          (let ((,osym ,alloc))
@@ -469,74 +433,12 @@
                 ;; aux argument - :named structure names only
                 ;; (so, incidentally, there's always an initform)
                 (push (list var initform) aux))
-            (push (funcall genset osym var index) forms)))))
+            (push (funcall genset osym index var) forms)))))
     `(defun ,name (&key ,@kwparams)
        (let (,@aux
              (,osym ,alloc))
          ,@forms
          ,osym))))
-
-(defun defstruct-dispatch-constructor-def (option slot-descriptions alloc genset)
-  (if (eq (first option) :constructor)
-      (defstruct-constructor-def (second option) (third option)
-                                 slot-descriptions alloc genset)
-      (defstruct-kw-constructor-def (second option) slot-descriptions alloc genset)))
-
-(defun defstruct-class-option-expander (structure-name slot-descriptions)
-  (lambda (option)
-    (case (car option)
-      ((:constructor :kw-constructor)
-       (defstruct-dispatch-constructor-def
-           option slot-descriptions
-         `(allocate-instance
-           ;; The class is not immediately available at l-t-v time-
-           ;; because the defclass form must be evaluated first.
-           ;; Thus, bullshit.
-           (let ((class (load-time-value (list nil))))
-             (or (car class)
-                 (car (rplaca class (find-class ',structure-name))))))
-         (lambda (obj var loc) `(si:instance-set ,obj ,loc ,var))))
-      ((:print-function :print-object)
-       (let ((obj (gensym "OBJ")) (stream (gensym "STREAM")))
-         `(defmethod print-object ((,obj ,structure-name) ,stream)
-            (,(second option) ,obj ,stream
-              ,@(when (eq (car option) :print-function) '(0))))))
-      ((:predicate)
-       `(defgeneric ,(second option) (object)
-          (:method (object) (declare (ignore object)) nil)
-          (:method ((object ,structure-name)) t)))
-      ((:copier)
-       ;; It might seem like we can do better here- basically copy
-       ;; a fixed number of slots - but CLHS is clear that the copier
-       ;; must be COPY-STRUCTURE, and so it has to deal correctly with subclasses.
-       `(defun ,(second option) (instance) (copy-structure instance)))
-      ((:documentation)
-        `(set-documentation ',structure-name 'structure
-                            ',(second option))))))
-
-(defun defstruct-vector-option-expander
-    (structure-name element-type included-size slot-descriptions)
-  (lambda (option)
-    (case (first option)
-      ((:constructor :kw-constructor)
-       (defstruct-dispatch-constructor-def
-        option slot-descriptions
-        `(make-array ,(length slot-descriptions)
-                     :element-type ',element-type)
-        (lambda (obj var loc)
-          `(setf (row-major-aref ,obj ,loc) ,var))))
-      ((:predicate)
-       (let ((pred (second option)) (name-loc (third option)))
-         `(defun ,pred (object)
-            (and (typep object '(simple-array ,element-type (*)))
-                 (>= (length object) ,(length slot-descriptions))
-                 (eq (row-major-aref object ,(+ name-loc included-size))
-                     ',structure-name)))))
-      ((:copier)
-       `(defun ,(second option) (instance) (copy-seq instance)))
-      ((:documentation)
-       `(set-documentation ',structure-name 'structure
-                           ',(second option))))))
 
 (defun list-of-length-at-least (list n)
   (dotimes (i n)
@@ -544,104 +446,130 @@
     (setf list (cdr list)))
   (listp list))
 
-(defun defstruct-list-option-expander
-    (structure-name included-size slot-descriptions)
-  (lambda (option)
-    (case (first option)
-      ((:constructor :kw-constructor)
-       ;; FIXME: inefficient
-       (defstruct-dispatch-constructor-def
-           option slot-descriptions
-         `(make-list ,(length slot-descriptions))
-         (lambda (obj var loc)
-           `(setf (nth ,loc ,obj) ,var))))
-      ((:predicate)
-       `(defun ,(second option) (object)
-          (and (list-of-length-at-least object ,(length slot-descriptions))
-               (eq (nth ,(+ (third option) included-size) object)
-                   ',structure-name))))
-      ((:copier)
-       `(defun ,(second option) (instance) (copy-list instance)))
-      ((:documentation)
-       `(set-documentation ',structure-name 'structure
-                           ',(second option))))))
+(defun read-form-generator (type)
+  (case type
+    (structure-object (lambda (object index) `(si:instance-ref ,object ,index)))
+    (list (lambda (object index) `(nth ,index ,object)))
+    (vector
+     (lambda (object index) `(row-major-aref ,object ,index)))))
 
-(defun defstruct-option-expander (name type-base element-type
-                                  included-size slot-descriptions)
-  (case type-base
-    (structure-object
-     (defstruct-class-option-expander name slot-descriptions))
-    (vector (defstruct-vector-option-expander
-                name element-type included-size slot-descriptions))
-    (list (defstruct-list-option-expander
-              name included-size slot-descriptions))))
+(defun write-form-generator (type)
+  (case type
+    (structure-object (lambda (object index new) `(si:instance-set ,object ,index ,new)))
+    (list (lambda (object index new) `(setf (nth ,index ,object) ,new)))
+    (vector
+     (lambda (object index new) `(setf (row-major-aref ,object ,index) ,new)))))
+
+(defun cas-form-generator (type)
+  (if (eq type 'structure-object)
+      (lambda (object index keys) `(apply #'mp:get-atomic-expansion
+                                          (list 'clos::standard-instance-access ,object ,index)
+                                          ,keys))
+      nil))
 
 (defmacro %%defstruct (name type (include included-size)
                        (&rest slot-descriptions)
-                       &rest options)
-  (multiple-value-bind (type-base element-type)
+                       &key constructors kw-constructors print-function print-object
+                         ((:predicate (predicate name-index)) '(nil nil) predicatep)
+                         copier unboxable (documentation nil documentationp))
+  (multiple-value-bind (type-base decltype)
       ;; NOTE about :type. CLHS says the structure :TYPE "must be one of"
       ;; LIST, VECTOR, or (VECTOR element-type). Nothing about subtypes
       ;; or expanding deftypes or whatever. We used to use SUBTYPEP here
       ;; but this is simpler and apparently in line with the standard.
-      (cond ((null type) 'structure-object)
-            ((eq type 'list) type)
-            ((eq type 'vector) (values 'vector t))
+      (cond ((null type) (values 'structure-object name))
+            ((eq type 'list) (values type type))
+            ((eq type 'vector) (values 'vector '(simple-array t (*))))
             ((and (consp type) (eq (car type) 'vector)
                   (consp (cdr type)) (null (cddr type)))
-             (values 'vector (second type)))
+             (values 'vector `(simple-array ,(second type) (*))))
             (t (simple-program-error
                 "~a is not a valid :TYPE in structure definition for ~a"
                 type name)))
-    (when (cdr (assoc :unboxable options))
-      ;; Unboxable structs are immutable.
-      (setf slot-descriptions (immutable-slot-descriptions slot-descriptions)))
-    `(progn
-       (eval-when (:compile-toplevel :load-toplevel :execute)
-         (setf (structure-type ',name) ',type-base
-               (structure-slot-descriptions ',name) ',slot-descriptions))
-       ,@(when (eq type-base 'structure-object)
-           `((defclass ,name ,(if include (list include) nil)
-               (,@(mapcar #'defstruct-slotd->defclass-slotd slot-descriptions))
-               ,@(let ((doc (second (assoc :documentation options))))
-                   (when doc `((:documentation ,doc))))
-               (:metaclass structure-class)
-               ,@(when (cdr (assoc :unboxable options)) '((:unboxable t))))))
-       ,@(let ((result nil))
-           (multiple-value-bind (gen-read gen-write gen-cas otype)
-               (case type-base
-                 (structure-object (values #'defstruct-class-reader-body
-                                           #'defstruct-class-writer-body
-                                           #+(or bclasp cclasp)
-                                           #'defstruct-class-cas-body
-                                           #-(or bclasp cclasp) nil
-                                           name))
-                 (vector (values #'defstruct-vector-reader-body
-                                 #'defstruct-vector-writer-body
-                                 nil
-                                 `(simple-array
-                                   ,element-type
-                                   (,(length slot-descriptions)))))
-                 (list (values #'defstruct-list-reader-body
-                               #'defstruct-list-writer-body
-                               nil
-                               'list)))
-             (do ((slotds slot-descriptions (rest slotds))
-                  (location 0 (1+ location)))
-                 ((endp slotds) result)
-               (when (first slotds) ; skip filler
-                 (setq result (nconc (gen-defstruct-accessor
-                                      name element-type
-                                      (first slotds) location
-                                      gen-read gen-write gen-cas otype)
-                                     result))))))
-       ,@(mapcar (defstruct-option-expander name type-base element-type
-                   included-size slot-descriptions)
-                 options)
-       ,@(let ((kwcon (second (assoc :kw-constructor options))))
-           (when kwcon
-             `((setf (structure-constructor ',name) ',kwcon))))
-       ',name)))
+    (let ((gen-read (read-form-generator type-base))
+          (gen-write (write-form-generator type-base))
+          (gen-cas (cas-form-generator type-base))
+          (alloc (case type-base
+                   (structure-object
+                    `(allocate-instance
+                      ;; The class is not immediately available at l-t-v time-
+                      ;; because the defclass form must be evaluated first.
+                      ;; Thus, bullshit.
+                      (let ((class (load-time-value (list nil))))
+                        (or (car class)
+                            (car (rplaca class (find-class ',name)))))))
+                   (list `(make-list ,(length slot-descriptions)))
+                   (vector `(make-array ,(length slot-descriptions)
+                                        :element-type ',(second decltype))))))
+      (when unboxable
+        ;; Unboxable structs are immutable.
+        (setf slot-descriptions (immutable-slot-descriptions slot-descriptions)))
+      `(progn
+         (eval-when (:compile-toplevel :load-toplevel :execute)
+           (setf (structure-type ',name) ',type-base
+                 (structure-slot-descriptions ',name) ',slot-descriptions))
+         ,@(when (eq type-base 'structure-object)
+             `((defclass ,name ,(if include (list include) nil)
+                 (,@(mapcar #'defstruct-slotd->defclass-slotd slot-descriptions))
+                 ,@(when documentationp `((:documentation ,documentation)))
+                 (:metaclass structure-class)
+                 ,@(when unboxable '((:unboxable t))))))
+         ,@(do ((slotds slot-descriptions (rest slotds))
+                (location 0 (1+ location))
+                (result nil))
+               ((endp slotds) result)
+             (when (first slotds) ; skip filler pseudoslots
+               (setq result (nconc (gen-defstruct-accessor
+                                    decltype (first slotds) location
+                                    gen-read gen-write gen-cas)
+                                   result))))
+         ,@(do ((constructors constructors (rest constructors))
+                (result nil))
+               ((endp constructors) result)
+             (destructuring-bind (name lambda-list) (first constructors)
+               (push (defstruct-constructor-def name lambda-list slot-descriptions alloc gen-write)
+                     result)))
+         ,@(do ((kwcons kw-constructors (rest kwcons))
+                (result nil))
+               ((endp kwcons) result)
+             (push (defstruct-kw-constructor-def (first kwcons) slot-descriptions alloc gen-write)
+                   result))
+         ,@(when print-function
+             (let ((obj (gensym "OBJ")) (stream (gensym "STREAM")))
+               `((defmethod print-object ((,obj ,name) ,stream)
+                   (,print-function ,obj ,stream 0)))))
+         ,@(when print-object
+             (let ((obj (gensym "OBJ")) (stream (gensym "STREAM")))
+               `((defmethod print-object ((,obj ,name) ,stream)
+                   (,print-object ,obj ,stream)))))
+         ,@(when predicatep
+             (list
+              (case type-base
+                (structure-object
+                 `(defgeneric ,predicate (object)
+                    (:method (object) (declare (ignore object)) nil)
+                    (:method ((object ,name)) t)))
+                (list
+                 `(defun ,predicate (object)
+                    (and (list-of-length-at-least object ,(length slot-descriptions))
+                         (eq (nth ,(+ name-index included-size) object) ',name))))
+                (vector
+                 `(defun ,predicate (object)
+                    (and (typep object ',decltype)
+                         (>= (length object) ,(length slot-descriptions))
+                         (eq (row-major-aref object ,(+ name-index included-size)) ',name)))))))
+         ,@(when copier
+             `((defun ,copier (instance)
+                 (,(case type-base
+                     (structure-object 'copy-structure)
+                     (list 'copy-list)
+                     (vector 'copy-seq))
+                  instance))))
+         ,@(when documentationp
+             `((set-documentation ',name 'structure ',documentation)))
+         ,@(when kw-constructors
+             `((setf (structure-constructor ',name) ',(first kw-constructors))))
+         ',name))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -969,14 +897,12 @@ as a STRUCTURE doc and can be retrieved by (documentation 'NAME 'structure)."
       `(%defstruct (,name ,conc-name) ,type ,include
          (,@overriding-slot-descriptions)
          (,@slot-descriptions)
-         ,@(mapcar (lambda (constructor) `(:constructor ,@constructor))
-                   constructors)
-         ,@(mapcar (lambda (kwcon) `(:kw-constructor ,kwcon))
-                   kw-constructors)
-         ,@(when print-function `((:print-function ,print-function)))
-         ,@(when print-object `((:print-object ,print-object)))
-         ,@(when predicate `((:predicate ,predicate ,name-offset)))
-         ,@(when copier `((:copier ,copier)))
-         ,@(when unboxable `((:unboxable t)))
+         ,@(when constructors `(:constructors (,@constructors)))
+         ,@(when kw-constructors `(:kw-constructors (,@kw-constructors)))
+         ,@(when print-function `(:print-function ,print-function))
+         ,@(when print-object `(:print-object ,print-object))
+         ,@(when predicate `(:predicate (,predicate ,name-offset)))
+         ,@(when copier `(:copier ,copier))
+         ,@(when unboxable `(:unboxable t))
          ,@(when (and documentation *keep-documentation*)
-             `((:documentation ,documentation)))))))
+             `(:documentation ,documentation))))))
