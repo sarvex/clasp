@@ -333,6 +333,28 @@
 (defun names-structure-p (name)
   (structure-type name))
 
+;;; We make sure structure constructors etc. use the right code even if the
+;;; class is subsequently removed from the environment. For this purpose we use
+;;; this table here. It is keyed on not just the name, but the layout, and is
+;;; unaffected by (SETF FIND-CLASS).
+;;; FIXME: It should be weak-value. It doesn't matter at the moment since the
+;;; values are referenced directly by literals tables through LOAD-TIME-VALUE
+;;; below.
+
+(defvar *struct-class-holders* (make-hash-table :test #'equal))
+
+(defun find-struct-class-holder (name layout)
+  (let ((key (list* name layout)))
+    (or (gethash key *struct-class-holders*)
+        (setf (gethash key *struct-class-holders*) (ext:make-class-holder)))))
+
+(defun find-struct-class (name layout)
+  ;; Should be impossible for a struct class to become unbound here.
+  (ext:class-get (find-struct-class-holder name layout)))
+
+(defun (setf find-struct-class) (class name layout)
+  (setf (ext:class-get (find-struct-class-holder name layout)) class))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Miscellaneous
@@ -564,12 +586,11 @@
         (alloc (case type-base
                  (structure-object
                   `(allocate-instance
-                    ;; The class is not immediately available at l-t-v time-
-                    ;; because the defclass form must be evaluated first.
-                    ;; Thus, bullshit.
-                    (let ((class (load-time-value (list nil))))
-                      (or (car class)
-                          (car (rplaca class (find-class ',name)))))))
+                    ;; The class may not be available at load-time-value time
+                    ;; (e.g. if make-whatever is in the same file as this defstruct)
+                    ;; so we have to be a bit indirect.
+                    (ext:class-get
+                     (load-time-value (find-struct-class-holder ',name ',layout)))))
                  (list `(make-list ,(length slot-descriptions)))
                  (vector `(make-array ,(length slot-descriptions)
                                       :element-type ',element-type)))))
@@ -586,7 +607,8 @@
                ,@(when documentationp `((:documentation ,documentation)))
                (:metaclass structure-class)
                (:layout ,@layout)
-               ,@(when unboxable '((:unboxable t))))))
+               ,@(when unboxable '((:unboxable t))))
+             (setf (find-struct-class ',name ',layout) (find-class ',name))))
        ,@(do ((slotds slot-descriptions (rest slotds))
               (location 0 (1+ location))
               (result nil))
@@ -601,7 +623,8 @@
              ((endp constructors) result)
            (destructuring-bind (name lambda-list) (first constructors)
              (push (defstruct-constructor-def name lambda-list slot-descriptions alloc gen-write)
-                   result)))
+                   result)
+             (push `(declaim (inline ,name)) result)))
        ,@(do ((kwcons kw-constructors (rest kwcons))
               (result nil))
              ((endp kwcons) result)

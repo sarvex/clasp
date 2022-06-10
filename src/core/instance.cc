@@ -774,8 +774,26 @@ bool ClassHolder_O::class_unboundp() const {
 }
 
 DOCGROUP(clasp)
+CL_DEFUN ClassHolder_sp ext__make_class_holder() {
+  return ClassHolder_O::create(unbound<Instance_O>());
+}
+
+DOCGROUP(clasp)
 CL_DEFUN Instance_sp ext__class_get(ClassHolder_sp holder) {
   return holder->class_get();
+}
+
+DOCGROUP(clasp)
+CL_LISPIFY_NAME("EXT:CLASS-GET");
+CL_DEFUN_SETF Instance_sp ext__setf_class_get(Instance_sp nclass, ClassHolder_sp holder) {
+  holder->class_set(nclass);
+  return nclass;
+}
+
+DOCGROUP(clasp)
+CL_DEFUN ClassHolder_sp ext__class_makunbound(ClassHolder_sp holder) {
+  holder->class_mkunbound();
+  return holder;
 }
 
 DOCGROUP(clasp)
