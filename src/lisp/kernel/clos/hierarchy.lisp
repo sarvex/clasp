@@ -123,9 +123,10 @@
       (slot-descriptions)
       (initial-offset)
       (constructors)
-      ;; This slot we do need.
+      ;; These slots we do need.
       (unboxable :initform nil :initarg :unboxable
-                 :accessor structure-class-unboxable-p))))
+                 :accessor structure-class-unboxable-p)
+      (layout :initarg :layout :reader structure-class-layout))))
 
 ;;; ----------------------------------------------------------------------
 ;;; STANDARD-GENERIC-FUNCTION

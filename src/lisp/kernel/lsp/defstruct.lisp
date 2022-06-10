@@ -517,25 +517,35 @@
     (setf list (cdr list)))
   (listp list))
 
-(defun read-form-generator (type)
+;;; Wrapper that will be better handled later/in cclasp.
+;;; NAME, LAYOUT, and also INDEX must be constants.
+(defmacro core:struct-slot-value (name layout object index)
+  (declare (ignore name layout))
+  `(clos::standard-instance-access ,object ,index))
+
+(defun read-form-generator (type name layout)
   (case type
-    (structure-object (lambda (object index) `(si:instance-ref ,object ,index)))
+    (structure-object
+     (lambda (object index) `(core:struct-slot-value ,name ,layout ,object ,index)))
     (list (lambda (object index) `(nth ,index ,object)))
     (vector
      (lambda (object index) `(row-major-aref ,object ,index)))))
 
-(defun write-form-generator (type)
+(defun write-form-generator (type name layout)
   (case type
-    (structure-object (lambda (object index new) `(si:instance-set ,object ,index ,new)))
+    (structure-object
+     (lambda (object index new)
+       `(setf (core:struct-slot-value ,name ,layout ,object ,index) ,new)))
     (list (lambda (object index new) `(setf (nth ,index ,object) ,new)))
     (vector
      (lambda (object index new) `(setf (row-major-aref ,object ,index) ,new)))))
 
-(defun cas-form-generator (type)
+(defun cas-form-generator (type name layout)
   (if (eq type 'structure-object)
-      (lambda (object index keys) `(apply #'mp:get-atomic-expansion
-                                          (list 'clos::standard-instance-access ,object ,index)
-                                          ,keys))
+      (lambda (object index keys)
+        `(apply #'mp:get-atomic-expansion
+                (list 'core:struct-slot-value ',name ',layout ,object ,index)
+                ,keys))
       nil))
 
 (defmacro %%defstruct (name type-base element-type (include included-size)
@@ -548,9 +558,9 @@
                     (structure-object name)
                     (list 'list)
                     (vector `(simple-array ,element-type (*)))))
-        (gen-read (read-form-generator type-base))
-        (gen-write (write-form-generator type-base))
-        (gen-cas (cas-form-generator type-base))
+        (gen-read (read-form-generator type-base name layout))
+        (gen-write (write-form-generator type-base name layout))
+        (gen-cas (cas-form-generator type-base name layout))
         (alloc (case type-base
                  (structure-object
                   `(allocate-instance
@@ -575,6 +585,7 @@
                (,@(mapcar #'defstruct-slotd->defclass-slotd slot-descriptions))
                ,@(when documentationp `((:documentation ,documentation)))
                (:metaclass structure-class)
+               (:layout ,@layout)
                ,@(when unboxable '((:unboxable t))))))
        ,@(do ((slotds slot-descriptions (rest slotds))
               (location 0 (1+ location))
