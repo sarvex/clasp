@@ -117,13 +117,7 @@
   (defparameter +structure-class-slots+
     ;; Note that we don't need some of the class-slots, e.g. initargs, so we could
     ;; hypothetically reorganize things.
-    ;; We also don't really need any of these slots, but it might be good to have
-    ;; some kind of structure to represent descriptions of structures later.
     `(,@+class-slots+
-      (slot-descriptions)
-      (initial-offset)
-      (constructors)
-      ;; These slots we do need.
       (unboxable :initform nil :initarg :unboxable
                  :accessor structure-class-unboxable-p)
       (layout :initarg :layout :reader structure-class-layout))))
