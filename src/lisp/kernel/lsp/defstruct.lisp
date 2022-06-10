@@ -479,59 +479,91 @@
        ;; Slots to initialize.
        initialized-slots))))
 
-(defun defstruct-constructor-def (name original-lambda-list
-                                  slot-descriptions alloc genset)
+(defmacro make-struct (name layout &rest pairs)
+  ;; Pairs is an ordered list of (index . form),
+  ;; meaning that the indexth slot should be initialized to the value of form.
+  (case (layout-type-base layout)
+    (list
+     `(list ,@(do ((slots (layout-slot-layouts layout) (cdr slots))
+                   (index 0 (1+ index))
+                   (forms nil))
+                  ((null slots) (nreverse forms))
+                (let ((pair (assoc index pairs)))
+                  (push (if pair (cdr pair) 'nil) forms)))))
+    (structure-object
+     (let ((osym (gensym "NEW")))
+       `(let ((,osym (allocate-instance
+                      ;; The class may not be available at load-time-value time
+                      ;; (e.g. if make-whatever is in the same file as this defstruct)
+                      ;; so we have to be a bit indirect.
+                      (ext:class-get
+                       (load-time-value (find-struct-class-holder ',name ',layout))))))
+          ,@(do ((pairs pairs (cdr pairs))
+                 (forms nil))
+                ((null pairs) forms)
+              (let* ((pair (car pairs)) (index (car pair)) (form (cdr pair)))
+                (push `(setf (core:struct-slot-value ,name ,layout ,osym ,index) ,form) forms)))
+          ,osym)))
+    (otherwise ; vector
+     (let ((element-type (second (layout-type-base layout)))
+           (osym (gensym "NEW"))
+           (nslots (length (layout-slot-layouts layout))))
+       `(let ((,osym (make-array ,nslots :element-type ',element-type)))
+          (declare (type (simple-array ,element-type (,nslots)) ,osym)
+                   (optimize speed (safety 0))) ; try to avoid bounds checks
+          ,@(do ((pairs pairs (cdr pairs))
+                 (forms nil))
+                ((null pairs) forms)
+              (let* ((pair (car pairs)) (index (car pair)) (form (cdr pair)))
+                (push `(setf (row-major-aref ,osym ,index) ,form) forms)))
+          ,osym)))))
+
+(defun defstruct-constructor-def (name structure-name layout original-lambda-list
+                                  slot-descriptions)
   (multiple-value-bind (lambda-list initialized-slots)
       (process-boa-lambda-list original-lambda-list slot-descriptions)
-    (let ((osym (gensym "NEW"))
-          (forms nil))
-      ;; Construct initialization forms.
-      (do ((index 0 (1+ index))
-           (slot-descriptions slot-descriptions (rest slot-descriptions)))
-          ((null slot-descriptions))
-        (let ((slotd (first slot-descriptions)))
-          (when (member slotd initialized-slots)
-            (push (funcall genset osym index (first slotd)) forms))))
-      ;; Done
-      `(defun ,name ,lambda-list
-         (let ((,osym ,alloc))
-           ,@forms
-           ,osym)))))
-
-(defun defstruct-kw-constructor-def (name slot-descriptions alloc genset)
-  (let ((kwparams nil) (aux nil) (forms nil)
-        (osym (gensym "NEW")))
     (do ((index 0 (1+ index))
-         (slot-descriptions slot-descriptions (cdr slot-descriptions)))
-        ((null slot-descriptions))
+         (slot-descriptions slot-descriptions (rest slot-descriptions))
+         (pairs nil))
+        ((null slot-descriptions)
+         `(defun ,name ,lambda-list
+            (make-struct ,structure-name ,layout ,@pairs)))
       (let ((slotd (first slot-descriptions)))
-        (unless (null slotd) ; spacer
-          (let* ((slot-name (first slotd))
-                 ;; we use uninterned symbols as parameters per CLHS defstruct:
-                 ;; "The symbols which name the slots must not be used by the
-                 ;;  implementation as the names for the lambda variables in the
-                 ;;  constructor function, since one or more of those
-                 ;;  symbols might have been proclaimed special or..."
-                 ;; NOTE: In the BOA case, the programmer digs their own hole.
-                 (var (copy-symbol slot-name))
-                 (initarg (getf (rest slotd) :initarg))
-                 ;; I don't think we'd save any time by checking a
-                 ;; -p variable and not initializing, so we just
-                 ;; initialize slots to NIL if they aren't passed
-                 ;; and have no initform.
-                 (initform (getf (rest slotd) :initform)))
-            (if initarg
-                ;; keyword (normal) argument
-                (push (list (list initarg var) initform) kwparams)
-                ;; aux argument - :named structure names only
-                ;; (so, incidentally, there's always an initform)
-                (push (list var initform) aux))
-            (push (funcall genset osym index var) forms)))))
-    `(defun ,name (&key ,@kwparams)
-       (let (,@aux
-             (,osym ,alloc))
-         ,@forms
-         ,osym))))
+        (when (member slotd initialized-slots)
+          (push (cons index (first slotd)) pairs))))))
+
+(defun defstruct-kw-constructor-def (name structure-name layout slot-descriptions)
+  (do ((index 0 (1+ index))
+       (slot-descriptions slot-descriptions (cdr slot-descriptions))
+       (kwparams nil)
+       (aux nil)
+       (pairs nil))
+      ((null slot-descriptions)
+       `(defun ,name (&key ,@kwparams &aux ,@aux)
+          (make-struct ,structure-name ,layout ,@pairs)))
+    (let ((slotd (first slot-descriptions)))
+      (unless (null slotd) ; spacer
+        (let* ((slot-name (first slotd))
+               ;; we use uninterned symbols as parameters per CLHS defstruct:
+               ;; "The symbols which name the slots must not be used by the
+               ;;  implementation as the names for the lambda variables in the
+               ;;  constructor function, since one or more of those
+               ;;  symbols might have been proclaimed special or..."
+               ;; NOTE: In the BOA case, the programmer digs their own hole.
+               (var (copy-symbol slot-name))
+               (initarg (getf (rest slotd) :initarg))
+               ;; I don't think we'd save any time by checking a
+               ;; -p variable and not initializing, so we just
+               ;; initialize slots to NIL if they aren't passed
+               ;; and have no initform.
+               (initform (getf (rest slotd) :initform)))
+          (if initarg
+              ;; keyword (normal) argument
+              (push (list (list initarg var) initform) kwparams)
+              ;; aux argument - :named structure names only
+              ;; (so, incidentally, there's always an initform)
+              (push (list var initform) aux))
+          (push (cons index var) pairs))))))
 
 (defun list-of-length-at-least (list n)
   (dotimes (i n)
@@ -582,18 +614,7 @@
                     (vector `(simple-array ,element-type (*)))))
         (gen-read (read-form-generator type-base name layout))
         (gen-write (write-form-generator type-base name layout))
-        (gen-cas (cas-form-generator type-base name layout))
-        (alloc (case type-base
-                 (structure-object
-                  `(allocate-instance
-                    ;; The class may not be available at load-time-value time
-                    ;; (e.g. if make-whatever is in the same file as this defstruct)
-                    ;; so we have to be a bit indirect.
-                    (ext:class-get
-                     (load-time-value (find-struct-class-holder ',name ',layout)))))
-                 (list `(make-list ,(length slot-descriptions)))
-                 (vector `(make-array ,(length slot-descriptions)
-                                      :element-type ',element-type)))))
+        (gen-cas (cas-form-generator type-base name layout)))
     (when unboxable
       ;; Unboxable structs are immutable.
       (setf slot-descriptions (immutable-slot-descriptions slot-descriptions)))
@@ -621,14 +642,14 @@
        ,@(do ((constructors constructors (rest constructors))
               (result nil))
              ((endp constructors) result)
-           (destructuring-bind (name lambda-list) (first constructors)
-             (push (defstruct-constructor-def name lambda-list slot-descriptions alloc gen-write)
+           (destructuring-bind (cname lambda-list) (first constructors)
+             (push (defstruct-constructor-def cname name layout lambda-list slot-descriptions)
                    result)
              (push `(declaim (inline ,name)) result)))
        ,@(do ((kwcons kw-constructors (rest kwcons))
               (result nil))
              ((endp kwcons) result)
-           (push (defstruct-kw-constructor-def (first kwcons) slot-descriptions alloc gen-write)
+           (push (defstruct-kw-constructor-def (first kwcons) name layout slot-descriptions)
                  result))
        ,@(when print-function
            (let ((obj (gensym "OBJ")) (stream (gensym "STREAM")))
