@@ -5,13 +5,12 @@ Summary: Common Lisp implementation that brings Common Lisp and C++ Together
 
 License: GPLv3+
 URL:     https://github.com/clasp-developers/clasp
-Source0: ../../clasp.tar.gz
+Source0: https://github.com/clasp-developers/clasp/archive/refs/heads/yitzchak_rpm.tar.gz
 
 BuildRequires: boost-devel clang elfutils-libelf-devel fmt-devel
 BuildRequires: gmp-devel libbsd-devel libffi-devel libunwind-devel llvm-devel
 BuildRequires: ncurses-devel ninja-build sbcl zlib-devel
 
-Requires:
 
 %description
 Common Lisp implementation that brings Common Lisp and C++ Together.
@@ -24,6 +23,7 @@ make use of rapid prototyping, incremental development, and other
 capabilities that make it a powerful language.
 
 %prep
+%setup -n clasp-yitzchak_rpm
 
 %build
 ./koga --package-path=%{buildroot}/ --skip-sync=ansi-test,mps --bin-path=/usr/bin/ --share-path=/usr/share/clasp/ --lib-path=/usr/lib/clasp/
