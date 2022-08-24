@@ -823,6 +823,7 @@ the function to the overall configuration."
 :type can be used to only update a specific type of cflag (:cflags, :cxxflags,
 :cppflags)."
   (unless (zerop (length trimmed-flags))
+    (pprint trimmed-flags)
     (apply #'funcall-variant
            configuration
            (lambda (object)
