@@ -818,12 +818,11 @@ the function to the overall configuration."
 
 (defun append-cflags (configuration flags &rest rest
                       &key type &allow-other-keys
-                      &aux (trimmed-flags (string-trim " " flags)))
+                      &aux (trimmed-flags (string-trim " " (or flags ""))))
   "Append flags to the specified variant's (via funcall-variant) cflags. The key
 :type can be used to only update a specific type of cflag (:cflags, :cxxflags,
 :cppflags)."
   (unless (zerop (length trimmed-flags))
-    (pprint trimmed-flags)
     (apply #'funcall-variant
            configuration
            (lambda (object)
@@ -842,7 +841,7 @@ the function to the overall configuration."
           rest)))
 
 (defun append-ldflags (configuration flags &rest rest
-                       &aux (trimmed-flags (string-trim " " flags)))
+                       &aux (trimmed-flags (string-trim " " (or flags ""))))
   "Append flags to the specified variant's (via funcall-variant) ldflags."
   (unless (zerop (length trimmed-flags))
     (apply #'funcall-variant
@@ -853,7 +852,7 @@ the function to the overall configuration."
            rest)))
 
 (defun append-ldlibs (configuration flags &rest rest
-                       &aux (trimmed-flags (string-trim " " flags)))
+                       &aux (trimmed-flags (string-trim " " (or flags ""))))
   "Append flags to the specified variant's (via funcall-variant) ldlibs."
   (unless (zerop (length trimmed-flags))
     (apply #'funcall-variant
