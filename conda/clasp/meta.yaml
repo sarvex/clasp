@@ -10,16 +10,11 @@ source:
 requirements:
   build:
     - elfutils
-    - libffi
     - gmp
-    - ncurses
-    - libllvm13
-    - libclang13
-    - clang =13
-    - zlib
+    - llvm=14
+    - llvmdev=14
+    - clang=14
     - fmt
-    - libnetcdf
-    - czmq
     - boost-cpp
     - git
     - pkg-config
@@ -28,16 +23,10 @@ requirements:
 
   run:
     - elfutils
-    - libffi
     - gmp
-    - ncurses
-    - libllvm13
-    - libclang13
-    - clang =13
-    - zlib
+    - llvm=14
+    - clang=14
     - fmt
-    - libnetcdf
-    - czmq
     - boost-cpp
 
 about:

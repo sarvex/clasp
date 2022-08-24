@@ -65,6 +65,7 @@ into a list of values and values that are lists will be appended."
                           :error-output '(:string :stripped t))
       (declare (ignore error-output))
       (when (zerop code)
+        (format t "~a ~a~%" command standard-output)
         standard-output))))
 
 (defun git-commit (configuration &key short directory)

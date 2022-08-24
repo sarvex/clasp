@@ -14,5 +14,5 @@ EOL
 chmod u+x $PREFIX/etc/conda/activate.d/activate_clasp.sh
 chmod u+x $PREFIX/etc/conda/deactivate.d/deactivate_clasp.sh
 
-./koga --skip-sync=ansi-test,mps --bin-path=$PREFIX/bin/ --share-path=$PREFIX/share/clasp/ --lib-path=$PREFIX/share/clasp/
+./koga --skip-sync=ansi-test,mps --bin-path=$PREFIX/bin/ --share-path=$PREFIX/share/clasp/ --lib-path=$PREFIX/share/clasp/ --cxx=$PREFIX/bin/clang
 ninja -C build install
