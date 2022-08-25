@@ -13,7 +13,10 @@ requirements:
     - gmp
     - llvm=14
     - llvmdev=14
+    - clangxx=14
     - clang=14
+    - clangdev=14
+    - cxx-compiler
     - fmt
     - boost-cpp
     - git
@@ -26,6 +29,7 @@ requirements:
     - gmp
     - llvm=14
     - clang=14
+    - clangxx=14
     - fmt
     - boost-cpp
 

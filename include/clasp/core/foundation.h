@@ -36,6 +36,8 @@ THE SOFTWARE.
 #ifndef FOUNDATION_H //[
 #define FOUNDATION_H
 
+#define __STDC_LIMIT_MACROS 1
+
 #include <string>
 #include <filesystem>
 

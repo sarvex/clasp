@@ -19,4 +19,4 @@ RUN wget https://beta.quicklisp.org/quicklisp.lisp && \
     sbcl --non-interactive --load quicklisp.lisp --eval "(quicklisp-quickstart:install)" --eval "(ql-util:without-prompting (ql:add-to-init-file))" && \
     rm quicklisp.lisp && \
     conda init && \
-    conda install -y conda-build
+    conda install -c conda-forge -y conda-build elfutils gmp llvm=14 llvmdev=14 clangxx=14 clang=14 fmt boost-cpp git pkg-config ninja sbcl
