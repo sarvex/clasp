@@ -9,6 +9,7 @@ source:
 
 requirements:
   build:
+    - {{ compiler('cxx') }}
     - elfutils
     - gmp
     - llvm=14
@@ -16,7 +17,6 @@ requirements:
     - clangxx=14
     - clang=14
     - clangdev=14
-    - cxx-compiler
     - fmt
     - boost-cpp
     - git
