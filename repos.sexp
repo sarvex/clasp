@@ -7,7 +7,7 @@
 ((:name :ansi-test
   :repository "https://gitlab.common-lisp.net/yitzchak/ansi-test"
   :directory "dependencies/ansi-test/"
-  :branch "add-expected-failures")
+  :branch "inravina")
  (:name :cl-bench
   :repository "https://gitlab.common-lisp.net/ansi-test/cl-bench.git"
   :directory "dependencies/cl-bench/"
@@ -30,7 +30,7 @@
   :branch "master")
  (:name :trivial-gray-streams
   :repository "https://github.com/trivial-gray-streams/trivial-gray-streams.git"
-  :directory "dependencies/trivial-gray-streams/"
+  :directory "src/lisp/kernel/contrib/trivial-gray-streams/"
   :branch "master")
  (:name :acclimation
   :repository "https://github.com/robert-strandh/Acclimation.git"
@@ -115,6 +115,22 @@
   :directory "src/lisp/kernel/contrib/global-vars/"
   :commit "c749f32c9b606a1457daa47d59630708ac0c266e"
   :extension :cando)
+ (:name :incless
+  :repository "https://github.com/s-expressionists/Incless.git"
+  :directory "src/lisp/kernel/contrib/Incless/"
+  :commit "main")
+ (:name :inravina
+  :repository "https://github.com/yitzchak/Inravina.git"
+  :directory "src/lisp/kernel/contrib/Inravina/"
+  :commit "main")
+ (:name :trivial-package-locks
+  :repository "https://github.com/yitzchak/trivial-package-locks.git"
+  :directory "src/lisp/kernel/contrib/trivial-package-locks/"
+  :commit "main")
+ (:name :trivial-stream-column
+  :repository "https://github.com/yitzchak/trivial-stream-column.git"
+  :directory "src/lisp/kernel/contrib/trivial-stream-column/"
+  :commit "main")
  (:name :let-plus
   :repository "https://github.com/sharplispers/let-plus.git"
   :directory "src/lisp/kernel/contrib/let-plus/"

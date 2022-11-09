@@ -123,6 +123,9 @@
              #~"kernel/lsp/source-location.lisp"
              #~"kernel/lsp/defvirtual.lisp"
              #~"kernel/clos/streams.lisp"
+             #~"kernel/lsp/circle.lisp"
+             :incless-native
+             :inravina-intrinsic
              #~"kernel/lsp/pprint.lisp"
              #~"kernel/lsp/format-pprint.lisp"
              #~"kernel/clos/conditions.lisp"
