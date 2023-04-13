@@ -127,6 +127,7 @@ SYMBOL_EXPORT_SC_(KeywordPkg, faso);
 SYMBOL_EXPORT_SC_(KeywordPkg, fasoll);
 SYMBOL_EXPORT_SC_(KeywordPkg, fasobc);
 SYMBOL_EXPORT_SC_(KeywordPkg, bitcode);
+SYMBOL_EXPORT_SC_(KeywordPkg, bytecode);
 SYMBOL_EXPORT_SC_(KeywordPkg, linkage);
 SYMBOL_EXPORT_SC_(KeywordPkg, verbose);
 SYMBOL_EXPORT_SC_(KeywordPkg, pause_pid);
