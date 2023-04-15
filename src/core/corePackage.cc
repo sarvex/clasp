@@ -430,7 +430,6 @@ SYMBOL_EXPORT_SC_(LlvmoPkg, load_ll);
 SYMBOL_EXPORT_SC_(CorePkg, loadSource);
 SYMBOL_EXPORT_SC_(CorePkg, load_binary);
 SYMBOL_EXPORT_SC_(CorePkg, load_bytecode);
-SYMBOL_EXPORT_SC_(CorePkg, load_bytecodel);
 SYMBOL_EXPORT_SC_(CorePkg, load_faso);
 SYMBOL_EXPORT_SC_(CorePkg, load_fasoll);
 SYMBOL_EXPORT_SC_(CorePkg, load_fasobc);

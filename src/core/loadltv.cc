@@ -51,22 +51,52 @@
 
 namespace core {
 
-#define BC_MAGIC 0x8d7498b1
+#define BC_MAGIC_0 0x8d
+#define BC_MAGIC_1 0x74
+#define BC_MAGIC_2 0x98
+#define BC_MAGIC_3 0xb1
+
+#define BC_HEADER_SIZE 16
+
+#define BC_VERSION_MAJOR 0
+#define BC_VERSION_MINOR 9
 
 // versions are std::arrays so that we can compare them.
 typedef std::array<uint16_t, 2> BCVersion;
 
-const BCVersion min_version = {0, 9};
-const BCVersion max_version = {0, 9};
+const BCVersion min_version = {BC_VERSION_MAJOR, BC_VERSION_MINOR};
+const BCVersion max_version = {BC_VERSION_MAJOR, BC_VERSION_MINOR};
 
-static void ltv_verify(uint32_t magic, uint16_t major, uint16_t minor) {
-  if (magic != BC_MAGIC)
-    SIMPLE_ERROR("Invalid FASL: incorrect magic number 0x%" PRIx32, magic);
+static uint64_t ltv_header_decode(uint8_t *header) {
+  if (header[0] != BC_MAGIC_0 || header[1] != BC_MAGIC_1 || header[2] != BC_MAGIC_2 || header[3] != BC_MAGIC_3)
+    SIMPLE_ERROR("Invalid FASL: incorrect magic number 0x%" PRIx8 "%" PRIx8 "%" PRIx8 "%" PRIx8, header[0], header[1], header[2],
+                 header[3]);
   // C++ guarantees sequencing in the aggregate initialization.
-  BCVersion version = {major, minor};
+  BCVersion version = {header[4] << 8 | header[5], header[6] << 8 | header[7]};
   if ((version < min_version) || (version > max_version))
     // FIXME: Condition classes
     SIMPLE_ERROR("FASL version %" PRIu16 ".%" PRIu16 " is out of range of this loader", version[0], version[1]);
+  return ((uint64_t)header[8] << 56) | ((uint64_t)header[9] << 48) | ((uint64_t)header[10] << 40) | ((uint64_t)header[11] << 32) |
+         ((uint64_t)header[12] << 24) | ((uint64_t)header[13] << 16) | ((uint64_t)header[14] << 8) | ((uint64_t)header[15] << 0);
+}
+
+static void ltv_header_encode(uint8_t *header, uint64_t instruction_count) {
+  header[0] = BC_MAGIC_0;
+  header[1] = BC_MAGIC_1;
+  header[2] = BC_MAGIC_2;
+  header[3] = BC_MAGIC_3;
+  header[4] = (uint8_t)(BC_VERSION_MAJOR >> 8);
+  header[5] = (uint8_t)(BC_VERSION_MAJOR >> 0);
+  header[6] = (uint8_t)(BC_VERSION_MINOR >> 8);
+  header[7] = (uint8_t)(BC_VERSION_MINOR >> 0);
+  header[8] = (uint8_t)(instruction_count >> 56);
+  header[9] = (uint8_t)(instruction_count >> 48);
+  header[10] = (uint8_t)(instruction_count >> 40);
+  header[11] = (uint8_t)(instruction_count >> 32);
+  header[12] = (uint8_t)(instruction_count >> 24);
+  header[13] = (uint8_t)(instruction_count >> 16);
+  header[14] = (uint8_t)(instruction_count >> 8);
+  header[15] = (uint8_t)(instruction_count >> 0);
 }
 
 struct loadltv {
@@ -715,8 +745,9 @@ struct loadltv {
   }
 
   void load() {
-    ltv_verify(read_u32(), read_u16(), read_u16());
-    uint64_t ninsts = read_u64();
+    uint8_t header[BC_HEADER_SIZE];
+    clasp_read_byte8(stream, header, BC_HEADER_SIZE);
+    uint64_t ninsts = ltv_header_decode(header);
     for (size_t i = 0; i < ninsts; ++i)
       load_instruction();
     // TODO: Check EOF
@@ -763,12 +794,8 @@ CL_DEFUN void core__link_faslbc_files(T_sp output, List_sp files, bool verbose) 
     if (memory == MAP_FAILED) {
       SIMPLE_ERROR(("Could not mmap %s because of %s"), _rep_(filename), strerror(errno));
     }
-    ltv_verify((memory[0] << 24) | (memory[1] << 16) | (memory[2] << 8) | (memory[3] << 0), (memory[4] << 8) | (memory[5] << 0),
-               (memory[6] << 8) | (memory[7] << 0));
     mmaps.emplace_back(ltv_MmapInfo(memory, fsize));
-    instruction_count += ((size_t)memory[8] << 56) | ((size_t)memory[9] << 48) | ((size_t)memory[10] << 40) |
-                         ((size_t)memory[11] << 32) | ((size_t)memory[12] << 24) | ((size_t)memory[13] << 16) |
-                         ((size_t)memory[14] << 8) | ((size_t)memory[15] << 0);
+    instruction_count += ltv_header_decode(memory);
   }
 
   String_sp filename = gc::As<String_sp>(cl__namestring(output));
@@ -783,18 +810,12 @@ CL_DEFUN void core__link_faslbc_files(T_sp output, List_sp files, bool verbose) 
   }
 
   // Write header
-  uint8_t header[24] = {(uint8_t)(BC_MAGIC >> 24), (uint8_t)(BC_MAGIC >> 16),
-                        (uint8_t)(BC_MAGIC >> 8),  (uint8_t)(BC_MAGIC >> 0),
-                        max_version[0] >> 8,       max_version[0],
-                        max_version[1] >> 8,       max_version[1],
-                        instruction_count >> 56,   instruction_count >> 48,
-                        instruction_count >> 40,   instruction_count >> 32,
-                        instruction_count >> 24,   instruction_count >> 16,
-                        instruction_count >> 8,    instruction_count >> 0};
-  fwrite(header, 16, 1, fout);
+  uint8_t header[BC_HEADER_SIZE];
+  ltv_header_encode(header, instruction_count);
+  fwrite(header, BC_HEADER_SIZE, 1, fout);
 
   for (auto mmap : mmaps) {
-    fwrite(mmap._Memory + 16, mmap._Len - 16, 1, fout);
+    fwrite(mmap._Memory + BC_HEADER_SIZE, mmap._Len - BC_HEADER_SIZE, 1, fout);
     int res = munmap(mmap._Memory, mmap._Len);
     if (res != 0) {
       SIMPLE_ERROR(("Could not munmap memory"));
