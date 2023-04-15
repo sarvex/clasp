@@ -741,22 +741,6 @@ CL_DEFUN bool load_bytecode(T_sp filename, bool verbose, bool print, T_sp extern
   return true;
 }
 
-CL_DEFUN bool load_bytecodel(T_sp filename, bool verbose, bool print, T_sp external_format) {
-  T_sp strm =
-      cl__open(filename, kw::_sym_input, ext::_sym_byte8, nil<T_O>(), false, nil<T_O>(), false, external_format, nil<T_O>());
-  if (strm.nilp())
-    return false;
-  DynamicScopeManager lpscope(cl::_sym_STARloadPathnameSTAR, cl__pathname(filename));
-  DynamicScopeManager ltscope(cl::_sym_STARloadTruenameSTAR, cl__truename(filename));
-  int i = 0;
-  while (cl__listen(strm)) {
-    fmt::print("seg {}\n", ++i);
-    load_bytecode_stream(gc::As<Stream_sp>(strm));
-  }
-  cl__close(strm);
-  return true;
-}
-
 struct ltv_MmapInfo {
   uint8_t *_Memory;
   size_t _Len;

@@ -128,7 +128,6 @@ SYMBOL_EXPORT_SC_(KeywordPkg, fasoll);
 SYMBOL_EXPORT_SC_(KeywordPkg, fasobc);
 SYMBOL_EXPORT_SC_(KeywordPkg, bitcode);
 SYMBOL_EXPORT_SC_(KeywordPkg, bytecode);
-SYMBOL_EXPORT_SC_(KeywordPkg, bytecodel);
 SYMBOL_EXPORT_SC_(KeywordPkg, linkage);
 SYMBOL_EXPORT_SC_(KeywordPkg, verbose);
 SYMBOL_EXPORT_SC_(KeywordPkg, pause_pid);
@@ -1134,7 +1133,6 @@ void CoreExposer_O::define_essential_globals(LispPtr lisp) {
   hooks = Cons_O::create(Cons_O::create(SimpleBaseString_O::make("lfasl"), _sym_loadSource), hooks); // List of load commands
   hooks = Cons_O::create(Cons_O::create(SimpleBaseString_O::make("fasl"), _sym_load_binary), hooks);
   hooks = Cons_O::create(Cons_O::create(SimpleBaseString_O::make("faslbc"), _sym_load_bytecode), hooks);
-  hooks = Cons_O::create(Cons_O::create(SimpleBaseString_O::make("faslbcl"), _sym_load_bytecodel), hooks);
   hooks = Cons_O::create(Cons_O::create(SimpleBaseString_O::make("faso"), _sym_load_faso), hooks);
   hooks = Cons_O::create(Cons_O::create(SimpleBaseString_O::make("fasp"), _sym_load_faso), hooks);
   hooks = Cons_O::create(Cons_O::create(SimpleBaseString_O::make("fasoll"), _sym_load_fasoll), hooks);
