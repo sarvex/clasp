@@ -1,6 +1,10 @@
 #include <array>
 #include <vector>
 #include <bit>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
 #include <clasp/core/foundation.h>
 #include <clasp/core/ql.h>         // ql::list
 #include <clasp/core/primitives.h> // cl__fdefinition
@@ -48,6 +52,22 @@
 namespace core {
 
 #define BC_MAGIC 0x8d7498b1
+
+// versions are std::arrays so that we can compare them.
+typedef std::array<uint16_t, 2> BCVersion;
+
+const BCVersion min_version = {0, 9};
+const BCVersion max_version = {0, 9};
+
+static void ltv_verify(uint32_t magic, uint16_t major, uint16_t minor) {
+  if (magic != BC_MAGIC)
+    SIMPLE_ERROR("Invalid FASL: incorrect magic number 0x%" PRIx32, magic);
+  // C++ guarantees sequencing in the aggregate initialization.
+  BCVersion version = {major, minor};
+  if ((version < min_version) || (version > max_version))
+    // FIXME: Condition classes
+    SIMPLE_ERROR("FASL version %" PRIu16 ".%" PRIu16 " is out of range of this loader", version[0], version[1]);
+}
 
 struct loadltv {
   Stream_sp stream;
@@ -159,28 +179,6 @@ struct loadltv {
     default:
       UNREACHABLE();
     }
-  }
-
-  void load_magic() {
-    uint32_t magic = read_u32();
-    if (magic != BC_MAGIC)
-      SIMPLE_ERROR("Invalid FASL: incorrect magic number 0x%" PRIx32, magic);
-  }
-
-  // versions are std::arrays so that we can compare them.
-  typedef std::array<uint16_t, 2> BCVersion;
-
-  const BCVersion min_version = {0, 9};
-  const BCVersion max_version = {0, 9};
-
-  BCVersion load_version() {
-    // C++ guarantees sequencing in the aggregate initialization.
-    BCVersion version = {read_u16(), read_u16()};
-    if ((min_version <= version) && (version <= max_version))
-      return version;
-    else
-      // FIXME: Condition classes
-      SIMPLE_ERROR("FASL version %" PRIu16 ".%" PRIu16 " is out of range of this loader", version[0], version[1]);
   }
 
   void check_initialization() {
@@ -717,8 +715,7 @@ struct loadltv {
   }
 
   void load() {
-    load_magic();
-    load_version();
+    ltv_verify(read_u32(), read_u16(), read_u16());
     uint64_t ninsts = read_u64();
     for (size_t i = 0; i < ninsts; ++i)
       load_instruction();
@@ -758,6 +755,73 @@ CL_DEFUN bool load_bytecodel(T_sp filename, bool verbose, bool print, T_sp exter
   }
   cl__close(strm);
   return true;
+}
+
+struct ltv_MmapInfo {
+  uint8_t *_Memory;
+  size_t _Len;
+  ltv_MmapInfo(uint8_t *mem, size_t len) : _Memory(mem), _Len(len){};
+};
+
+CL_LAMBDA(output-designator files &optional (verbose nil));
+CL_DEFUN void core__link_faslbc_files(T_sp output, List_sp files, bool verbose) {
+  size_t instruction_count = 0;
+  std::vector<ltv_MmapInfo> mmaps;
+
+  for (size_t ii = 0; files.notnilp(); ++ii) {
+    String_sp filename = gc::As<String_sp>(cl__namestring(oCar(files)));
+    files = oCdr(files);
+    int fd = open(filename->get_std_string().c_str(), O_RDONLY);
+    off_t fsize = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+    uint8_t *memory = (uint8_t *)mmap(NULL, fsize, PROT_READ, MAP_SHARED | MAP_FILE, fd, 0);
+    close(fd);
+    if (memory == MAP_FAILED) {
+      SIMPLE_ERROR(("Could not mmap %s because of %s"), _rep_(filename), strerror(errno));
+    }
+    ltv_verify((memory[0] << 24) | (memory[1] << 16) | (memory[2] << 8) | (memory[3] << 0), (memory[4] << 8) | (memory[5] << 0),
+               (memory[6] << 8) | (memory[7] << 0));
+    mmaps.emplace_back(ltv_MmapInfo(memory, fsize));
+    instruction_count += ((size_t)memory[8] << 56) | ((size_t)memory[9] << 48) | ((size_t)memory[10] << 40) |
+                         ((size_t)memory[11] << 32) | ((size_t)memory[12] << 24) | ((size_t)memory[13] << 16) |
+                         ((size_t)memory[14] << 8) | ((size_t)memory[15] << 0);
+  }
+
+  String_sp filename = gc::As<String_sp>(cl__namestring(output));
+
+  FILE *fout = fopen(filename->get_std_string().c_str(), "w");
+  if (!fout) {
+    SIMPLE_ERROR(("Could not open file %s"), _rep_(filename));
+  }
+
+  if (verbose) {
+    write_bf_stream(fmt::sprintf("Writing file: %s\n", _rep_(filename)));
+  }
+
+  // Write header
+  uint8_t header[24] = {(uint8_t)(BC_MAGIC >> 24), (uint8_t)(BC_MAGIC >> 16),
+                        (uint8_t)(BC_MAGIC >> 8),  (uint8_t)(BC_MAGIC >> 0),
+                        max_version[0] >> 8,       max_version[0],
+                        max_version[1] >> 8,       max_version[1],
+                        instruction_count >> 56,   instruction_count >> 48,
+                        instruction_count >> 40,   instruction_count >> 32,
+                        instruction_count >> 24,   instruction_count >> 16,
+                        instruction_count >> 8,    instruction_count >> 0};
+  fwrite(header, 16, 1, fout);
+
+  for (auto mmap : mmaps) {
+    fwrite(mmap._Memory + 16, mmap._Len - 16, 1, fout);
+    int res = munmap(mmap._Memory, mmap._Len);
+    if (res != 0) {
+      SIMPLE_ERROR(("Could not munmap memory"));
+    }
+  }
+
+  if (verbose)
+    write_bf_stream(fmt::sprintf("Closing %s\n", _rep_(filename)));
+  fclose(fout);
+  if (verbose)
+    write_bf_stream(fmt::sprintf("Returning %s\n", _rep_(filename)));
 }
 
 }; // namespace core
