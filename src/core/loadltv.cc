@@ -606,7 +606,7 @@ struct loadltv {
 
   void op_create() {
     size_t index = read_index();
-    Function_sp func = coerce::functionDesignator(get_ltv(read_index()));
+    Function_sp func = gc::As<Function_sp>(get_ltv(read_index()));
     uint16_t nargs = read_u16();
     T_O *args[nargs];
     for (size_t i = 0; i < nargs; ++i)
@@ -616,7 +616,7 @@ struct loadltv {
   }
 
   void op_init() {
-    Function_sp func = coerce::functionDesignator(get_ltv(read_index()));
+    Function_sp func = gc::As<Function_sp>(get_ltv(read_index()));
     uint16_t nargs = read_u16();
     T_O *args[nargs];
     for (size_t i = 0; i < nargs; ++i)
