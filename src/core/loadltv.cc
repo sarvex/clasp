@@ -6,9 +6,8 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <clasp/core/foundation.h>
-#include <clasp/core/ql.h>         // ql::list
-#include <clasp/core/primitives.h> // cl__fdefinition
-#include <clasp/core/designators.h>
+#include <clasp/core/ql.h>            // ql::list
+#include <clasp/core/primitives.h>    // cl__fdefinition
 #include <clasp/core/bytecode.h>      // modules, functions
 #include <clasp/core/lispStream.h>    // I/O
 #include <clasp/core/hashTable.h>     // making hash tables

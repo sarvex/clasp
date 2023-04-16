@@ -515,7 +515,9 @@
             ((call-with-dumpable-arguments-p form)
              (make-instance 'general-creator
                :prototype value
-               :function (ensure-constant (car form))
+               :function (add-instruction
+                          (make-instance 'fdefinition-lookup
+                            :name (ensure-constant (car form))))
                :arguments (mapcar (f-dumpable-form-creator env) (rest form))))
             (t (default))))))
 
@@ -538,7 +540,9 @@
                     :arguments (mapcar cre (cddr form))))
                  (add-instruction
                   (make-instance 'general-initializer
-                    :function (ensure-constant (car form))
+                    :function (add-instruction
+                               (make-instance 'fdefinition-lookup
+                                 :name (ensure-constant (car form))))
                     :arguments (mapcar cre (rest form)))))))
            (t (default)))))
 
