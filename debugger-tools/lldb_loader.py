@@ -17,14 +17,14 @@ print( "\n\n\nLoading clasp udb python extension from directory = %s" % dir)
 
 def maybeReloadModules():
     global inspector_mod, debugger_mod
-    if (inspector_mod == None):
-      inspector_mod = importlib.import_module("clasp_inspect")
+    if inspector_mod is None:
+        inspector_mod = importlib.import_module("clasp_inspect")
     else:
-      importlib.reload(inspector_mod)
-    if (debugger_mod == None):
-      debugger_mod = importlib.import_module("backends.lldb")
+        importlib.reload(inspector_mod)
+    if debugger_mod is None:
+        debugger_mod = importlib.import_module("backends.lldb")
     else:
-      importlib.reload(debugger_mod)
+        importlib.reload(debugger_mod)
     
 def __lldb_init_module(debugger, internal_dict):
     debugger.HandleCommand('command script add -f lldb_loader.lisp_print lpr')

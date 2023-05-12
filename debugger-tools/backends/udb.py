@@ -18,7 +18,7 @@ ByteOrder = 'little'
 def install_debugger_inspector(debugger,inspector):
     global inspector_mod
     global debugger_mod
-    dbg_print("udb.py:install_inspector %s" % inspector)
+    dbg_print(f"udb.py:install_inspector {inspector}")
     debugger_mod = debugger
     inspector_mod = inspector
 
@@ -34,7 +34,7 @@ def read_memory(address,len=8):
     return val[0]
 
 def test_debugger(arg):
-    print("In udb test_debugger arg: %s" % arg)
+    print(f"In udb test_debugger arg: {arg}")
 
 def dump_memory(address):
     cmd0 = "x/8xg 0x%x" % (address-64)
@@ -85,8 +85,7 @@ def lisp_selected_frame():
     for symbol in block:
         if (symbol.name == "sa"):
             sa = symbol.value(frame)
-    result = (sa[0],sa[1],sa[2])
-    return result
+    return sa[0], sa[1], sa[2]
 
 def global_variable_string(name):
     object = gdb.parse_and_eval(name)
@@ -94,11 +93,11 @@ def global_variable_string(name):
 
 def global_variable_string(name):
     object = gdb.parse_and_eval(name)
-    return "%s" % object.string()
+    return f"{object.string()}"
 
 def global_variable_int(name):
     object = gdb.parse_and_eval(name)
-    return int("%s" % object.string())
+    return int(f"{object.string()}")
 
 def global_variable_null(name):
     object = gdb.parse_and_eval(name)
@@ -138,25 +137,25 @@ class InlinedFrameDecorator(FrameDecorator):
     def function(self):
         global inspector_mod
         global debugger_mod
-        dbg_print( "InlinedFrameDecorator:function inspector_mod %s" % inspector_mod)
+        dbg_print(f"InlinedFrameDecorator:function inspector_mod {inspector_mod}")
         frame = self.fobj.inferior_frame()
         name = str(frame.name())
-        dbg_print("InlinedFrameDecorator::function name = %s" % name)
+        dbg_print(f"InlinedFrameDecorator::function name = {name}")
         if frame.type() == gdb.INLINE_FRAME:
-            name = name + " [inlined]"
+            name += " [inlined]"
         if (name == "bytecode_trampoline_with_stackmap"):
             stackmap_var = frame.read_var("trampoline_save_args")
-            arg = "%s"%stackmap_var[0]
-            dbg_print("do_lisp_print arg= %s" % arg)
+            arg = f"{stackmap_var[0]}"
+            dbg_print(f"do_lisp_print arg= {arg}")
             lisp_name = inspector_mod.function_name(debugger_mod,arg)
-            dbg_print("lisp_name = %s" % lisp_name )
-            name = "BYTECODE_FRAME(%s)"%lisp_name
+            dbg_print(f"lisp_name = {lisp_name}")
+            name = f"BYTECODE_FRAME({lisp_name})"
         return name
 
     def frame_args(self):
         frame = self.fobj.inferior_frame()
         name = str(frame.name())
-        dbg_print("InlinedFrameDecorator::function name = %s" % name)
+        dbg_print(f"InlinedFrameDecorator::function name = {name}")
         if (name == "bytecode_trampoline_with_stackmap"):
             stackmap_var = frame.read_var("trampoline_save_args")
             nargs = stackmap_var[1]
@@ -165,10 +164,10 @@ class InlinedFrameDecorator(FrameDecorator):
             for iarg in range(0,nargs):
                 tptr = read_memory(vargs+(8*iarg),len=8)
                 try:
-                    varg = inspector_mod.do_lisp_print_value(debugger_mod,"%s"%tptr)
+                    varg = inspector_mod.do_lisp_print_value(debugger_mod, f"{tptr}")
                 except:
                     varg = "BADARG(0x%x)"%tptr
-                args.append( LispArg("a%d" % iarg, "%s"%varg))
+                args.append(LispArg("a%d" % iarg, f"{varg}"))
             return args
 
 class LispArg:

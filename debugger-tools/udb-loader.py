@@ -23,15 +23,15 @@ def show_help():
 
 def maybeReloadModules(verbose=False):
     global inspector_mod, debugger_mod
-    if (inspector_mod == None):
-      inspector_mod = importlib.import_module("clasp_inspect")
+    if inspector_mod is None:
+        inspector_mod = importlib.import_module("clasp_inspect")
     else:
-      importlib.reload(inspector_mod)
-    if (debugger_mod == None):
-      debugger_mod = importlib.import_module("backends.udb")
+        importlib.reload(inspector_mod)
+    if debugger_mod is None:
+        debugger_mod = importlib.import_module("backends.udb")
     else:
-      importlib.reload(debugger_mod)
-    print( "maybeReloadModules verbose = %s" % verbose)
+        importlib.reload(debugger_mod)
+    print(f"maybeReloadModules verbose = {verbose}")
     inspector_mod.load_clasp_layout(debugger_mod,verbose)
     # Tell the debugger_mod about the inspector_mod
     debugger_mod.install_debugger_inspector(debugger_mod,inspector_mod)
@@ -121,11 +121,11 @@ class LispBacktrace (gdb.Command):
   def __init__ (self):
     super (LispBacktrace, self).__init__ ("lbt", gdb.COMMAND_USER)
 
-  def invoke (self, arg, from_tty):
-    global inspector_mod, debugger_mod
-    maybeReloadModules()
-    gdb.execute("set print frame-arguments all")
-    gdb.execute("bt "+arg)
+  def invoke(self, arg, from_tty):
+      global inspector_mod, debugger_mod
+      maybeReloadModules()
+      gdb.execute("set print frame-arguments all")
+      gdb.execute(f"bt {arg}")
 
 class LispPrintVector (gdb.Command):
   def __init__ (self):

@@ -60,8 +60,6 @@ def int_to_bytearray(val, bytesize):
         fmt = template % 'h'
     elif bytesize == 4:
         fmt = template % 'i'
-    elif bytesize == 4:
-        fmt = template % 'q'
     else:
         return None
 
@@ -85,8 +83,6 @@ def bytearray_to_int(bytes, bytesize):
         fmt = template % 'h'
     elif bytesize == 4:
         fmt = template % 'i'
-    elif bytesize == 4:
-        fmt = template % 'q'
     else:
         return None
 
@@ -109,18 +105,14 @@ def get_description(obj, option=None):
     method = getattr(obj, 'GetDescription')
     if not method:
         return None
-    if isinstance(obj, lldb.SBTarget) or isinstance(obj, lldb.SBBreakpointLocation):
-        if option is None:
-            option = lldb.eDescriptionLevelBrief
+    if (
+        isinstance(obj, (lldb.SBTarget, lldb.SBBreakpointLocation))
+    ) and option is None:
+        option = lldb.eDescriptionLevelBrief
 
     stream = lldb.SBStream()
-    if option is None:
-        success = method(stream)
-    else:
-        success = method(stream, option)
-    if not success:
-        return None
-    return stream.GetData()
+    success = method(stream) if option is None else method(stream, option)
+    return None if not success else stream.GetData()
         
 
 # =================================================
@@ -285,21 +277,17 @@ def get_args_as_string(frame, showFuncName=True):
     # statics       => False
     # in_scope_only => True
     vars = frame.GetVariables(True, False, False, True) # type of SBValueList
-    args = [] # list of strings
-    for var in vars:
-        args.append("(%s)%s=%s" % (var.GetTypeName(),
-                                   var.GetName(),
-                                   var.GetValue()))
+    args = [
+        f"({var.GetTypeName()}){var.GetName()}={var.GetValue()}"
+        for var in vars
+    ]
     if frame.GetFunction():
         name = frame.GetFunction().GetName()
     elif frame.GetSymbol():
         name = frame.GetSymbol().GetName()
     else:
         name = ""
-    if showFuncName:
-        return "%s(%s)" % (name, ", ".join(args))
-    else:
-        return "(%s)" % (", ".join(args))
+    return f'{name}({", ".join(args)})' if showFuncName else f'({", ".join(args)})'
         
 
 
@@ -325,7 +313,7 @@ def lbt(debugger, command, result, internal_dict):
     addrs = list(get_pc_addresses(thread))
     print("Backtrace to depth of %d" % depth)
     if thread.GetStopReason() != lldb.eStopReasonInvalid:
-        desc =  "stop reason=" + stop_reason_to_str(thread.GetStopReason())
+        desc = f"stop reason={stop_reason_to_str(thread.GetStopReason())}"
     else:
         desc = ""
     print("Stack trace for thread id={0:#x} name={1} queue={2} ".format(
@@ -341,34 +329,47 @@ def lbt(debugger, command, result, internal_dict):
                 start_addr = frame.GetSymbol().GetStartAddress().GetFileAddress()
                 symbol_offset = file_addr - start_addr
                 sym = symbols[i]
-                if (sym == None):
-                    sym_start = extend_lldb.loadperf.lookup_address(load_addr)
-                    if (sym_start):
+                if sym is None:
+                    if sym_start := extend_lldb.loadperf.lookup_address(
+                        load_addr
+                    ):
                         sym = sym_start[0]
                         symbol_offset = load_addr-sym_start[1]
                     else:
                         sym = "UNKNOWN-SYM"
                 mmod = mods[i]
-                if (mmod == None):
+                if mmod is None:
                     mmod = ""
                 print('  frame #{num}: {addr:#016x} {mod}`{symbol} + {offset}'.format(
                           num=i, addr=load_addr, mod=mmod, symbol=sym, offset=symbol_offset)
                           ,file=result)
             else:
-               print('  frame #{num}: {addr:#016x} {mod}`{func} at {file}:{line} {args}'.format(
-                         num=i, addr=load_addr, mod=mods[i],
-                         func='%s [inlined]' % funcs[i] if frame.IsInlined() else funcs[i],
-                         file=files[i], line=lines[i],
-                         args=get_args_as_string(frame, showFuncName=False) if not frame.IsInlined() else '()')
-                         ,file=result)
+                print(
+                    '  frame #{num}: {addr:#016x} {mod}`{func} at {file}:{line} {args}'.format(
+                        num=i,
+                        addr=load_addr,
+                        mod=mods[i],
+                        func=f'{funcs[i]} [inlined]'
+                        if frame.IsInlined()
+                        else funcs[i],
+                        file=files[i],
+                        line=lines[i],
+                        args=get_args_as_string(frame, showFuncName=False)
+                        if not frame.IsInlined()
+                        else '()',
+                    ),
+                    file=result,
+                )
         except Error:
             print("Could not print frame %d" % i)
     print("Done backtrace")
 
 def do_lldb_init_module(debugger, internal_dict,prefix):
-    prefix = "%s.print_function" % prefix
-    debugger.HandleCommand('command script add -f %s.lbt lbt' % prefix)
-    print('The "lbt" python command has been installed - %s.lbt and is ready for use.' % prefix)
+    prefix = f"{prefix}.print_function"
+    debugger.HandleCommand(f'command script add -f {prefix}.lbt lbt')
+    print(
+        f'The "lbt" python command has been installed - {prefix}.lbt and is ready for use.'
+    )
 
 
 

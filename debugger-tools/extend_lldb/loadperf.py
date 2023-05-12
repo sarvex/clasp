@@ -17,7 +17,7 @@ class PerfFile():
         self._funcs = []
         
     def load(self,filename):
-        print("Loading file: %s" % filename)
+        print(f"Loading file: {filename}")
         if os.path.exists(filename):
             self._funcs = []
             with open(filename) as fin:
@@ -28,7 +28,7 @@ class PerfFile():
             self._funcs.sort(key=func_start)
             print("Loaded file")
         else:
-            print("Could not find file %s" % filename)
+            print(f"Could not find file {filename}")
         return self
         
     def binary_search(self, x):
@@ -48,11 +48,11 @@ class PerfFile():
             elif arr[mid]._start > x: 
                 high = mid - 1
                 # If x is smaller, ignore right half
-            if ((arr[mid]._start <= x) and (x < (arr[mid]._start+arr[mid]._length))):
+            if arr[mid]._start <= x < arr[mid]._start + arr[mid]._length:
 #                print("binary_search returning mid = %d" % mid)
                 return mid
             if (low==high):
-                if ((arr[low]._start <= x) and (x < (arr[low]._start+arr[low]._length))):
+                if arr[low]._start <= x < arr[low]._start + arr[low]._length:
 #                    print("binary_search returning low = %d" % low)
                     return low
                 print("binary_search failed low==high returning None")
@@ -75,15 +75,13 @@ class PerfFile():
 def load_perf_file(pid):
     global global_perf
     global_perf = PerfFile().load("/tmp/perf-%d.map" % pid)
-    print("perf = %s" % global_perf)
+    print(f"perf = {global_perf}")
     print("Loaded perf number of entries: %d" % len(global_perf._funcs))
 
 
 def lookup_address(address):
     global global_perf
-    func_start = global_perf.lookup_function(address)
-#    print("Looked up address %x -> %s" % (address , func))
-    return func_start
+    return global_perf.lookup_function(address)
     
 def do_lldb_init_module(debugger,internal_dict,prefix):
     target = debugger.GetSelectedTarget()

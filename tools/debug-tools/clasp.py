@@ -168,32 +168,33 @@ def print_simple_base_string(debugger,verbose,indent,class_,obj):
     process = debugger.GetSelectedTarget().GetProcess()
     data = process.ReadMemory(base+data_offset,length_,err)
     if (err.Success()):
-        print("Data: %s "% data)
+        print(f"Data: {data} ")
     else:
         print("Data Could not read!!!")
 
 def print_Closure_O(debugger,verbose,indent,class_,obj):
-    print("class dict -> %s" % class_.__dict__)
+    print(f"class dict -> {class_.__dict__}")
     
 def print_shallow_object_type(debugger,verbose,indent,obj,type_=0):
-    if (type_==0):
-        if (generalp(obj)):
-            base = untag_general(obj)
-            header_ptr = base - 8
-            err = lldb.SBError()
-            process = debugger.GetSelectedTarget().GetProcess()
-            header = process.ReadUnsignedFromMemory(header_ptr,8,err)
-            if (err.Success()):
-                stamp = header>>4
-                if (verbose): print("%sheader@%x stamp = %d" % (indent,header_ptr,stamp))
-                class_ = global_Kinds[stamp]
-                name = class_._name
-                if (name=="core::SimpleBaseString_O"):
-                    if (verbose): print("class_ = %s" % class_.__dict__)
-                    print_simple_base_string(debugger,verbose,indent,class_,obj)
-                    return
-                if (verbose): print("%sclass = %s" % (indent,name))
-            return
+    if (type_ == 0) and (generalp(obj)):
+        base = untag_general(obj)
+        header_ptr = base - 8
+        err = lldb.SBError()
+        process = debugger.GetSelectedTarget().GetProcess()
+        header = process.ReadUnsignedFromMemory(header_ptr,8,err)
+        if (err.Success()):
+            stamp = header>>4
+            if (verbose): print("%sheader@%x stamp = %d" % (indent,header_ptr,stamp))
+            class_ = global_Kinds[stamp]
+            name = class_._name
+            if (name=="core::SimpleBaseString_O"):
+                if verbose:
+                    print(f"class_ = {class_.__dict__}")
+                print_simple_base_string(debugger,verbose,indent,class_,obj)
+                return
+            if verbose:
+                print(f"{indent}class = {name}")
+        return
     print("%sprint_object_type Handle obj: %d  type: %d\n" % (indent, obj, type_))
     
 def print_tagged_ptr(debugger,verbose,tptr):
@@ -208,7 +209,7 @@ def print_tagged_ptr(debugger,verbose,tptr):
             if (verbose): print("header@%x stamp = %d" % (header_ptr,stamp))
             class_ = global_Kinds[stamp]
             name = class_._name
-            print("a %s" % name)
+            print(f"a {name}")
             for field in class_._fields.values():
                 val = read_unsigned_at_offset(debugger,verbose,base,field._field_offset)
                 print("field@0x%x: %s" % (val,field._field_name))
@@ -224,11 +225,9 @@ def print_tagged_ptr(debugger,verbose,tptr):
 def inspect(debugger,command,result,internal_dict):
     args = command.split(" ")
     arg = args[0]
-    verbose = False
-    if (len(args)>1):
-        verbose = True
+    verbose = len(args) > 1
     ptr = None
-    if (arg[0:2]=='$r'):
+    if arg[:2] == '$r':
         print("Handle register %s\n" % arg)
         return
     if (is_int(arg,16)):
@@ -237,9 +236,11 @@ def inspect(debugger,command,result,internal_dict):
         tptr = int(arg,10)
     else:
         key = lldb.frame.FindVariable(arg)
-        if (verbose): print("arg = %s" % key)
+        if verbose:
+            print(f"arg = {key}")
         theObject = key.GetChildMemberWithName("theObject")
         # theObject.GetValue() returns a string - why? dunno
-        if (verbose): print("theObject.GetValue() = %s" % theObject.GetValue())
+        if verbose:
+            print(f"theObject.GetValue() = {theObject.GetValue()}")
         tptr = int(theObject.GetValue(),16)
     print_tagged_ptr(debugger,verbose,tptr)
